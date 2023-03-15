@@ -81,13 +81,8 @@ formula <- x_eff ~ -1 +
   f(id.ref, model = "iid" , hyper = multi.utils::tau_fixed(1E-6)) +
   bs(id.age, df = 5)  +
   # f(id.age, model = "ar1") +
-  f(id.iso3, model="besag", graph="geog.adj", scale.model = TRUE, group = id.age, control.group = list(model = "rw2"), constr = TRUE
-    # hyper = multi.utils::tau_pc(x = 0.001, u = 2.5, alpha = 0.01)
-  )
-# f(id.ref2, model="iid", group = id.age, control.group = list(model = "iid"),
-#    constr = TRUE
-#   # hyper = multi.utils::tau_pc(x = 0.001, u = 2.5, alpha = 0.01)
-#   )
+  f(id.iso3, model="besag", graph="geog.adj", scale.model = TRUE, group = id.age, control.group = list(model = "rw2"), constr = TRUE) +
+  f(id.ref2, model="iid", group = id.age, control.group = list(model = "rw2"), constr = TRUE)
 
 # df <- pred2 %>%
 #   filter(!is.na(x_eff)) 
@@ -99,7 +94,8 @@ fit <- inla(formula, data = pred2, family = 'xPoisson',
             control.predictor = list(link = 1),
             control.compute = list(dic = TRUE, waic = TRUE,
                                    cpo = TRUE, config = TRUE),
-            inla.mode = "experimental")
+            inla.mode = "experimental",
+            verbose = TRUE)
 
 df <- pred2 %>%
   filter(across(all_of("x_eff"), ~!is.na(.x)))
