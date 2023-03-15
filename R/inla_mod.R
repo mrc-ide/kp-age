@@ -81,8 +81,7 @@ formula <- x_eff ~ -1 +
   f(id.ref, model = "iid" , hyper = multi.utils::tau_fixed(1E-6)) +
   bs(id.age, df = 5)  +
   # f(id.age, model = "ar1") +
-  f(id.iso3, model="besag", graph="geog.adj", scale.model = TRUE, group = id.age, control.group = list(model = "rw2"), constr = TRUE) +
-  f(id.ref2, model="iid", group = id.age, control.group = list(model = "rw2"), constr = TRUE)
+  f(id.iso3, model="besag", graph="geog.adj", scale.model = TRUE, group = id.age, control.group = list(model = "rw2"), constr = TRUE)
 
 # df <- pred2 %>%
 #   filter(!is.na(x_eff)) 
