@@ -6,23 +6,17 @@ library(countrycode)
 library(Matrix)
 library(TMB)
 
-ssd_boundary <- read_sf("~/Downloads/ssd_adm_imwg_nbs_20220121/ssd_admbnda_adm0_imwg_nbs_20210924.shp")
-ssd_boundary_simple <- rmapshaper::ms_simplify(ssd_boundary, 0.05)
-
-geographies <- read_sf("~/Downloads/Longitude_Graticules_and_World_Countries_Boundaries-shp/99bfd9e7-bb42-4728-87b5-07f8c8ac631c2020328-1-1vef4ev.lu5nk.shp") %>%
-  bind_rows(
-    ssd_boundary_simple %>%
-      transmute(CNTRY_NAME = "South Sudan")
-  ) %>%
-  mutate(iso3 = countrycode(CNTRY_NAME, "country.name", "iso3c"),
-         area_name = countrycode(iso3, "iso3c", "country.name")) %>%
-  filter(iso3 %in% ssa_iso3) %>%
-  mutate(id.iso3 = row_number())
+geographies <- read_sf(moz.utils::national_areas()) %>%
+  st_make_valid() %>%
+  arrange(area_id) %>%
+  mutate(
+    id.iso3 = row_number()
+  )
 
 nb <- geographies %>%
   arrange(id.iso3) %>%
   spdep::poly2nb() %>%
-  `names<-`(as.character(1:38))
+  `names<-`(geographies$area_id)
 
 nb <- lapply(nb, as.integer)
 class(nb) <- "nb"
@@ -31,9 +25,28 @@ adj <- spdep::nb2mat(nb, zero.policy=TRUE, style="B")
 R_spatial <- INLA::inla.scale.model(diag(rowSums(adj)) - 0.99*adj,
                                     constr = list(A = matrix(1, 1, nrow(adj)), e = 0))
 
-dat <- read_csv("~/Downloads/age_dat.csv") %>%
+separate_survey_id <- function(df, kp = T) {
+  
+  if(kp) {
+    df %>%
+      tidyr::separate(survey_id, into = c("iso3", "year", NA), sep = c(3, 7), remove = F, convert = T) %>%
+      tidyr::separate(survey_id, into = c(NA, "kp"), sep = "_", remove = F)
+  } else {
+    df %>%
+      tidyr::separate(survey_id, into = c("iso3", "year", NA), sep = c(3, 7), remove = F, convert = T)
+  }
+  
+}
+
+dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/rds_agedata_1206.rds") %>%
+  rename(age = category) %>%
+  separate_survey_id() %>%
   filter(kp == "FSW",
-         age %in% 15:49)
+         age %in% 15:49) %>%
+  type.convert(as.is = T)
+
+dat <- dat %>%
+  select(iso3, survey_id, age, n)
 
 dat <- dat %>%
   select(iso3, survey_id, age, n) %>%
@@ -43,12 +56,12 @@ dat <- dat %>%
 
 mf_model <- crossing(
   # iso3 = ssa_iso3,
-  age_group = unique(dat$age_group)
-                     # age = 15:49
+  # age_group = unique(# dat$age_group)
+                     age = 15:49
                      ) %>%
   # left_join(geographies %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>%
   ungroup() %>%
-  mutate(id.age = factor(to_int(age_group)),
+  mutate(id.age = factor(to_int(age)),
          # id.iso3 = factor(to_int(iso3)),
          idx = factor(row_number()))
 
@@ -57,36 +70,41 @@ dat <- dat %>%
 
 M_obs <- sparse.model.matrix(~0 + idx, dat)
 Z_age <- sparse.model.matrix(~0 + id.age, mf_model)
-Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
+# Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
-x <- 0:34
-k <- seq(-15, 50, by = 5)
-spline_mat <- splines::splineDesign(k, x, ord = 4)
-spline_mat <- as(spline_mat, "sparseMatrix")
+# x <- 0:34
+# k <- seq(-15, 50, by = 5)
+# spline_mat <- splines::splineDesign(k, x, ord = 4)
+# spline_mat <- as(spline_mat, "sparseMatrix")
 
 # Z_age <- Z_age %*% spline_mat
 
 tmb_int <- list()
 
-tst <- crossing(
-  # age = 15:49,
-  age_group = mf_model$age_group,
-         survey_id = dat$survey_id
-  ) %>%
-  left_join(dat) %>%
-  select(survey_id, age_group, n) %>%
-  arrange(survey_id) %>%
-  pull(n)
+
+
+tst <- crossing(age = 15:49,
+                survey_id = unique(dat$survey_id)) %>%
+  left_join(dat %>% select(survey_id, age, n)) %>%
+  select(survey_id, age, n) %>%
+  arrange(survey_id, age)
 
 tst[is.na(tst)] <- 0
 
+norm_n <- tst %>%
+  group_by(survey_id) %>%
+  mutate(norm_n = n/sum(n)) %>%
+  pull(norm_n)
+
+norm_x <- matrix(norm_n, nrow = length(unique(dat$survey_id)), byrow = TRUE)
+
 tmb_int$data <- list(
   M_obs = M_obs,
-  observed_x = matrix(tst, ncol = 7, byrow = TRUE),
+  observed_x = norm_x,
   Z_age = Z_age,
-  R_age = dfertility::make_rw_structure_matrix(ncol(spline_mat), 1, adjust_diagonal = TRUE),
-  Z_spatial = Z_spatial,
-  R_spatial = R_spatial
+  R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE)
+  # Z_spatial = Z_spatial,
+  # R_spatial = R_spatial
   
 )
 
@@ -139,6 +157,9 @@ sd_report
 class(fit) <- "naomi_fit"
 # debugonce(naomi::sample_tmb)
 fit <- naomi::sample_tmb(fit, random_only=TRUE)
+
+hist(fit$sample$p_arr[1,])
+
 
 
 x <- c(0, 1, 3, 5 ,12, 12, 14, 11, 10, 8, 5, 2,1, 0, 0)

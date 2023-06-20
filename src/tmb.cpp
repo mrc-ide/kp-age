@@ -32,8 +32,8 @@ Type objective_function<Type>::operator() ()
 
   // DATA_SCALAR(n_surveys);
 
-  DATA_SPARSE_MATRIX(Z_spatial);
-  DATA_SPARSE_MATRIX(R_spatial);
+  // DATA_SPARSE_MATRIX(Z_spatial);
+  // DATA_SPARSE_MATRIX(R_spatial);
   // DATA_SCALAR(rankdef_R_spatial); // rank deficiency of the R_spatial structure matrix
 
   nll -= dnorm(beta_0, Type(0), Type(sqrt(1/0.001)), true);
@@ -166,7 +166,7 @@ Type objective_function<Type>::operator() ()
   // nll -= Type(-0.5) * (u_smooth_iid * (R_smooth_iid * u_smooth_iid)).sum();
 
   ///////////////////////
-
+ 
   vector<Type> logit_p(
                      beta_0
                      + Z_age * u_age * sqrt(1/prec_rw_age)
@@ -191,9 +191,9 @@ Type objective_function<Type>::operator() ()
 
   array<Type> p_arr(number_surveys,number_age);
 
-  for(int j=0; j<number_age; j++) {
-    for(int i=0; i<number_surveys; i++) {
-      p_arr(i,j) = p_pred((j*10) + i);
+  for(int i=0; i<number_surveys; i++) {
+    for(int j=0; j<number_age; j++) {
+      p_arr(i,j) = p_pred((i*35) + j);
     }
   }
 
@@ -207,12 +207,12 @@ Type objective_function<Type>::operator() ()
 
   // vector<Type> observed_x(x);
 
-  for (int i=0; i<n; i++) {
+  for (int i=0; i<number_surveys; i++) {
     vector<Type> p_row(p_arr.matrix().row(i));
-    vector<Type> p_row_norm(p_row/p_row.sum());
+    // vector<Type> p_row_norm(p_row/p_row.sum());
     vector<Type> x_row(observed_x.matrix().row(i));
 
-    nll -= dmultinom(x_row, p_row_norm, true);
+    nll -= dmultinom(x_row, p_row, true);
   }
 
   // REPORT(p);
