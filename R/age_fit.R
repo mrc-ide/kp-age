@@ -2,6 +2,7 @@ library(tidyverse)
 library(sf)
 library(dfertility)
 library(multi.utils)
+library(moz.utils)
 library(countrycode)
 library(Matrix)
 library(TMB)
@@ -56,12 +57,12 @@ dat <- dat %>%
 
 mf_model <- crossing(
   # iso3 = ssa_iso3,
-  # age_group = unique(# dat$age_group)
-                     age = 15:49
+  age_group = unique(dat$age_group)
+                     # age = 15:49
                      ) %>%
   # left_join(geographies %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>%
   ungroup() %>%
-  mutate(id.age = factor(to_int(age)),
+  mutate(id.age = factor(to_int(age_group)),
          # id.iso3 = factor(to_int(iso3)),
          idx = factor(row_number()))
 
@@ -76,31 +77,30 @@ Z_age <- sparse.model.matrix(~0 + id.age, mf_model)
 # k <- seq(-15, 50, by = 5)
 # spline_mat <- splines::splineDesign(k, x, ord = 4)
 # spline_mat <- as(spline_mat, "sparseMatrix")
-
 # Z_age <- Z_age %*% spline_mat
 
 tmb_int <- list()
 
 
 
-tst <- crossing(age = 15:49,
+tst <- crossing(age_group = unique(dat$age_group),
                 survey_id = unique(dat$survey_id)) %>%
-  left_join(dat %>% select(survey_id, age, n)) %>%
-  select(survey_id, age, n) %>%
-  arrange(survey_id, age)
+  left_join(dat %>% select(survey_id, age_group, n)) %>%
+  select(survey_id, age_group, n) %>%
+  arrange(survey_id, age_group)
 
 tst[is.na(tst)] <- 0
 
-norm_n <- tst %>%
-  group_by(survey_id) %>%
-  mutate(norm_n = n/sum(n)) %>%
-  pull(norm_n)
+# norm_n <- tst %>%
+#   group_by(survey_id) %>%
+#   # mutate(norm_n = n/sum(n)) %>%
+#   pull(norm_n)
 
-norm_x <- matrix(norm_n, nrow = length(unique(dat$survey_id)), byrow = TRUE)
+observed_x <- matrix(tst$n, nrow = length(unique(dat$survey_id)), byrow = TRUE)
 
 tmb_int$data <- list(
   M_obs = M_obs,
-  observed_x = norm_x,
+  observed_x = observed_x,
   Z_age = Z_age,
   R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE)
   # Z_spatial = Z_spatial,
@@ -112,6 +112,7 @@ tmb_int$par <- list(
   beta_0 = 0,
   u_age = rep(0, ncol(Z_age)),
   log_prec_rw_age = 0
+  # lag_logit_phi_age = 0
   # u_spatial_str = rep(0, ncol(Z_spatial)),
   # log_prec_spatial = 0
 )
