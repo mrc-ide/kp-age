@@ -25,7 +25,7 @@ Type objective_function<Type>::operator() ()
   PARAMETER(beta_0);
 
   DATA_SPARSE_MATRIX(M_obs);
-  DATA_ARRAY(observed_x);
+  DATA_MATRIX(observed_x);
 
   int number_surveys = observed_x.rows(); // Number of rows (surveys)
   int number_age = observed_x.cols(); // Number of cols (age categories)
@@ -74,11 +74,16 @@ Type objective_function<Type>::operator() ()
   DATA_SPARSE_MATRIX(R_age);
   PARAMETER(log_prec_rw_age);
   PARAMETER_VECTOR(u_age);
-
+  PARAMETER(lag_logit_phi_age);
+  
+  nll -= dnorm(lag_logit_phi_age, Type(0), Type(sqrt(1/0.15)), true);
+  Type phi_age = 2*exp(lag_logit_phi_age)/(1+exp(lag_logit_phi_age))-1;
+  nll += AR1(Type(phi_age))(u_age);
 
   Type prec_rw_age = exp(log_prec_rw_age);
   nll -= dgamma(prec_rw_age, Type(1), Type(2000), true);
-  nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);
+  // nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);
+  
 
 
   ////////////////////
@@ -210,7 +215,7 @@ Type objective_function<Type>::operator() ()
   for (int i=0; i<number_surveys; i++) {
     vector<Type> p_row(p_arr.matrix().row(i));
     // vector<Type> p_row_norm(p_row/p_row.sum());
-    vector<Type> x_row(observed_x.matrix().row(i));
+    vector<Type> x_row(observed_x.row(i));
 
     nll -= dmultinom(x_row, p_row, true);
   }
