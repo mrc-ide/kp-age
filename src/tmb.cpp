@@ -74,7 +74,7 @@ Type objective_function<Type>::operator() ()
   DATA_SPARSE_MATRIX(R_age);
   PARAMETER(log_prec_rw_age);
   PARAMETER_VECTOR(u_age);
-  
+
   // PARAMETER(lag_logit_phi_age);
   // nll -= dnorm(lag_logit_phi_age, Type(0), Type(sqrt(1/0.15)), true);
   // Type phi_age = 2*exp(lag_logit_phi_age)/(1+exp(lag_logit_phi_age))-1;
@@ -82,7 +82,7 @@ Type objective_function<Type>::operator() ()
 
   Type prec_rw_age = exp(log_prec_rw_age);
   nll -= dgamma(prec_rw_age, Type(1), Type(2000), true);
-  
+
   nll -= Type(-0.5) * (u_age * (R_age * u_age)).sum();
   nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);
 
@@ -110,7 +110,7 @@ Type objective_function<Type>::operator() ()
 
   ///////////////////
    // ETA-2 - Space x time interaction
-//
+// 
   // PARAMETER_ARRAY(eta2);
   // PARAMETER(log_prec_eta2);
   // PARAMETER(logit_eta2_phi_period);
@@ -171,7 +171,7 @@ Type objective_function<Type>::operator() ()
   // nll -= Type(-0.5) * (u_smooth_iid * (R_smooth_iid * u_smooth_iid)).sum();
 
   ///////////////////////
- 
+
   vector<Type> logit_p(
                      beta_0
                      + Z_age * u_age * sqrt(1/prec_rw_age)
@@ -198,7 +198,7 @@ Type objective_function<Type>::operator() ()
 
   for(int i=0; i<number_surveys; i++) {
     for(int j=0; j<number_age; j++) {
-      p_arr(i,j) = p_pred((i*35) + j);
+      p_arr(i,j) = p_pred((i*7) + j);
     }
   }
 
