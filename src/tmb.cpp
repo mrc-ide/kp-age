@@ -85,6 +85,8 @@ Type objective_function<Type>::operator() ()
 
   nll -= Type(-0.5) * (u_age * (R_age * u_age)).sum();
   nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);
+  
+  std::cout << log_prec_rw_age << std::endl;
 
   ////////////////////
   // ETA-1 - Age x time interaction
@@ -193,6 +195,8 @@ Type objective_function<Type>::operator() ()
   vector<Type> p_pred(M_obs * p
                           // + log_offset_naomi
                           );
+  
+  
 
   array<Type> p_arr(number_surveys,number_age);
 
