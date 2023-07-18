@@ -24,7 +24,7 @@ newmultinom2 <- function (x, size = NULL, prob, log = FALSE)
 }
 
 
-agedat <- read_csv("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agemoddat_20_06.csv") %>% 
+agedat <- read_csv("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agemoddat_20_06.csv") %>% 
   separate(survey_id, into = c(NA, "kp"), remove = FALSE, sep = "_") %>% 
   filter(kp == "FSW") %>% 
   filter(!is.na(age),
@@ -113,7 +113,7 @@ fullage_dat %>%
 ##### Ref random effects
 
 
-agedat <- read_csv("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agemoddat_20_06.csv") %>% 
+agedat <- read_csv("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agemoddat_20_06.csv") %>% 
   separate(survey_id, into = c(NA, "kp"), remove = FALSE, sep = "_") %>% 
   filter(kp == "FSW") %>% 
   filter(!is.na(age),
@@ -142,6 +142,9 @@ fullage_dat <- crossing(id.survey = seq(1,max(agedat$id.survey), 1),
   group_by(id.survey) %>% 
   mutate(n = sum(x))
 
+R_survey <- diag(1, max(agedat$id.survey))
+R_survey <- as(as(as(R_survey, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+
 parameters <- list(
   # p = rep(0.1428571, max(agedat$id.age)),
   
@@ -150,17 +153,49 @@ parameters <- list(
   # mu_b0 = 0,
   
   ## Fixed effect for age
-  age = runif(max(agedat$id.age), min = 0, max = 0.001),
+  # age = runif(max(agedat$id.age), min = 0, max = 0.001),
+  u_age = runif(max(agedat$id.age), min = 0, max = 0.001),
+  log_sd_age = 1,
+  lag_logit_phi_age = 0.5,
+  # R_age = dfertility::make_rw_structure_matrix(max(agedat$id.age), 1, adjust_diagonal = TRUE), # Structure matrix for a RW1
+  
   
   ## Survey iid
   u_survey = runif(max(agedat$id.survey), min = 0, max = 0.001),
-  sd_survey = 1
+  log_sd_survey = 1
+)
 
+other_bits <- list(
+  R_survey = Diagonal(max(agedat$id.survey)) ## Structure matrix for an iid effect (also called an identity matrix)
 )
 
 
+N01 <- function(x) sum(dnorm(x, log=TRUE))
+AR1 <- function(phi, DMARG = N01) {
+  function(x) {
+    x <- as.array(x)
+    d <- dim(x); ncolx <- tail(d, 1)
+    xcol <- function(j) {
+      dim(x) <- c(length(x) / ncolx, ncolx)
+      ans <- x[,j]
+      newd <- head(d, -1)
+      if (length(newd)==0) newd <- NULL
+      dim(ans) <- newd
+      ans
+    }
+    ans <- DMARG(xcol(1))
+    sd <- sqrt(1-phi*phi)
+    for (i in 2:ncolx) {
+      ans <- ans + DMARG( ( xcol(i) - phi * xcol(i-1) ) / sd )
+    }
+    ans <- ans - (length(x) / ncolx) * (ncolx - 1) *  log(sd)
+    ans
+  }
+}
+
+
 f <- function(parms) {
-  getAll(parms, fullage_dat, warn=FALSE)                  
+  getAll(parms, fullage_dat, other_bits, warn=FALSE)                  
   
   
   nll <- 0
@@ -169,16 +204,31 @@ f <- function(parms) {
   nll <- nll - dnorm(b0, mean = 0, sd = 5, log = TRUE)
   
   # Fixed effect age prior [diffuse normal prior]
-  nll <- nll - sum(dnorm(age, mean = 0, sd = 5, log = TRUE))
+  # nll <- nll - sum(dnorm(age, mean = 0, sd = 5, log = TRUE))
+  
+  # AR1 on age
+  nll <- nll - dnorm(lag_logit_phi_age, 0, sqrt(1/0.15), T) #Prior on phi
+  sd_age = exp(log_sd_age)
+  nll <- nll - dnorm(sd_age, 0, 5) # Prior on age sd
+  phi_age <- 2*exp(lag_logit_phi_age)/(1+exp(lag_logit_phi_age))-1 #Transformation away from lag lagit to natural
+  nll <- nll - AR1(phi_age)(u_age)
+  
   
   # Prior for survey iid effects
+  sd_survey = exp(log_sd_survey)
+  nll <- nll - dnorm(sd_survey, 0, 5) # Prior on survey sd
+  
   nll <- nll - sum(dnorm(u_survey, mean=0, sd=sd_survey, log=TRUE))
+  # nll <- nll - GMRF(R_survey)(u_survey)     ## GMRF not implemented
+  # nll <- nll - sum(-0.5 * (u_survey * u_survey)) ## THIS WORKS
+  nll <- nll - sum(-0.5 * (u_survey * (R_survey * u_survey)))   ## This causes the crash
+ 
   
   #' x ~ Multinom(n, p)
   #' p = b0 + u_survey
   #' 
 
-  logit_p <- b0 + age[id.age] + u_survey[id.survey]
+  logit_p <- b0 + u_age[id.age] * sd_age + u_survey[id.survey] * sd_survey
   
   p <- plogis(logit_p)
   
@@ -195,12 +245,17 @@ f <- function(parms) {
   nll
 }
 
-debugonce(f)
+debugonce(AR1)
 f(parameters)
 
-# debug(newmultinom)
-obj <- MakeADFun(f, parameters, random = c("b0", "age", "u_survey"))
+# debug(RTMB::MakeADFun)
+# undebug(RTMB::MakeADFun)
+debugonce(RTMB::MakeADFun)
 
+
+## Error in SparseArith2(e1, advector(e2), .Generic) : Wrong use of 'SparseArith2'
+## When debugging MakeADFun the error occurs at line 142 obj$retape()
+obj <- RTMB::MakeADFun(f, parameters, random = c("b0", "u_age", "u_survey"))
 f <- stats::nlminb(obj$par, obj$fn, obj$gr)
 f$par.fixed <- f$par
 f$par.full <- obj$env$last.par
@@ -218,7 +273,8 @@ sd_report
 fullage_dat %>%
   cbind(estimate = data.frame(sd_report) %>%
           rownames_to_column() %>%
-          filter(str_detect(rowname, "p")) %>%
+          filter(str_detect(rowname, "p"),
+                 rowname != "lag_logit_phi_age") %>%
           pull(Estimate)) %>%
   group_by(id.survey) %>%
   mutate(estimate = estimate/sum(estimate),
