@@ -36,7 +36,7 @@ Type objective_function<Type>::operator() ()
   // DATA_SPARSE_MATRIX(R_spatial);
   // DATA_SCALAR(rankdef_R_spatial); // rank deficiency of the R_spatial structure matrix
 
-  nll -= dnorm(beta_0, Type(0), Type(sqrt(1/0.001)), true);
+  nll -= dnorm(beta_0, Type(0), Type(sqrt(1/0.001)), true);  //Prior for the intercept, v diffuse prior
 
   ///////////////////
 
@@ -84,9 +84,9 @@ Type objective_function<Type>::operator() ()
   nll -= dgamma(prec_rw_age, Type(1), Type(2000), true);
 
   nll -= Type(-0.5) * (u_age * (R_age * u_age)).sum();
-  nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);
+  nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
   
-  std::cout << log_prec_rw_age << std::endl;
+  // std::cout << log_prec_rw_age << std::endl;
 
   ////////////////////
   // ETA-1 - Age x time interaction
@@ -173,10 +173,12 @@ Type objective_function<Type>::operator() ()
   // nll -= Type(-0.5) * (u_smooth_iid * (R_smooth_iid * u_smooth_iid)).sum();
 
   ///////////////////////
+  
+  // Multinomial model --> Logit is our link 
 
   vector<Type> logit_p(
-                     beta_0
-                     + Z_age * u_age * sqrt(1/prec_rw_age)
+                     beta_0                                  // Parameter of length 1
+                     + Z_age * u_age * sqrt(1/prec_rw_age)   
                      // + Z_period * u_period * sqrt(1/prec_rw_period)
                      // + X_period * beta_period
                      // + Z_spatial * spatial
@@ -190,11 +192,14 @@ Type objective_function<Type>::operator() ()
                      // + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
                      );
 
-  vector<Type> p(invlogit(logit_p));
+  vector<Type> p(invlogit(logit_p));  //ip dealised set of P
 
-  vector<Type> p_pred(M_obs * p
+  std::cout << p << std::endl;
+  
+  
+  vector<Type> p_pred(M_obs * p      
                           // + log_offset_naomi
-                          );
+                          );           //get me the perfect p_vector and get me the ones that relate to the data --> which comes from M_obs
   
   
 
@@ -202,7 +207,7 @@ Type objective_function<Type>::operator() ()
 
   for(int i=0; i<number_surveys; i++) {
     for(int j=0; j<number_age; j++) {
-      p_arr(i,j) = p_pred((i*7) + j);
+      p_arr(i,j) = p_pred((i*number_age) + j);       
     }
   }
 
@@ -217,16 +222,22 @@ Type objective_function<Type>::operator() ()
   // vector<Type> observed_x(x);
 
   for (int i=0; i<number_surveys; i++) {
-    vector<Type> p_row(p_arr.matrix().row(i));
-    vector<Type> p_row_norm(p_row/p_row.sum());
-    vector<Type> x_row(observed_x.row(i));
+    vector<Type> p_row(p_arr.matrix().row(i));   //p_row is composed of the i'th row of p_arr
+    vector<Type> p_row_norm(p_row/p_row.sum());  // we normalise it
+    vector<Type> x_row(observed_x.row(i));       //i_th row of the data 
 
-    nll -= dmultinom(x_row, p_row, true);
+    nll -= dmultinom(x_row, p_row_norm, true);
+    
+    // std::cout << p_row << std::endl;
+    //std::cout << p_row_norm << std::endl;
+    // std::cout << x_row << std::endl;
   }
 
   // REPORT(p);
-  REPORT(logit_p);
+  REPORT(p_arr);
   // REPORT(log_prec_rw_age);
+  
+
 
   return nll;
 
