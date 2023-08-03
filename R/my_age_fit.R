@@ -46,7 +46,7 @@ separate_survey_id <- function(df, kp = T) {
   
 }
 
-dat <- readRDS("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/rds_agedata_1206.rds") %>%
+dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/rds_agedata_1206.rds") %>%
   rename(age = category) %>%
   # separate_survey_id() %>%
   separate(survey_id, into = c("iso3", NA), sep = 3, remove = FALSE) %>% 
@@ -246,13 +246,11 @@ class(fit) <- "naomi_fit"
 # debugonce(naomi::sample_tmb)
 fit <- naomi::sample_tmb(fit, random_only=TRUE)
 
-hist(fit$sample$p_arr[1,])
+int <- rowMeans(fit$sample$single_row_of_probs)
 
-hist(fit$sample$logit_p[1,])
+df <- data.frame(age = 15:49, p = int) %>%
+  single_year_to_five_year()
 
-
-
-# x <- c(0, 1, 3, 5 ,12, 12, 14, 11, 10, 8, 5, 2,1, 0, 0)
-# prob <- c(0.05, 0.05, 0.05, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.05, 0.02, 0.03, 0.03, 0.01, 0.01)
-# sum(prob)
-# dmultinom(x, prob = prob)
+df %>%
+  group_by(age_group) %>%
+  summarise(p = sum(p))
