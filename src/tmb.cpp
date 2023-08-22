@@ -48,6 +48,26 @@ Type objective_function<Type>::operator() ()
 
   ///////////////////////
   
+  DATA_SPARSE_MATRIX(Z_spatial);
+  DATA_SPARSE_MATRIX(R_spatial);
+  // DATA_SCALAR(rankdef_R_spatial); // rank deficiency of the R_spatial structure matrix
+  
+  ///////////////////
+  
+  PARAMETER_VECTOR(u_spatial_str);
+  PARAMETER(log_prec_spatial);
+
+  Type prec_spatial = exp(log_prec_spatial);
+  nll -= dgamma(prec_spatial, Type(1), Type(2000), true);
+
+  nll -= Type(-0.5) * (u_spatial_str * (R_spatial * u_spatial_str)).sum();
+
+  nll -= dnorm(u_spatial_str.sum(), Type(0), Type(0.01) * u_spatial_str.size(), 1);
+  
+  
+  
+  
+  
   // Multinomial model --> Logit is our link 
 
   vector<Type> logit_p(
@@ -56,7 +76,7 @@ Type objective_function<Type>::operator() ()
                      // + Z_period * u_period * sqrt(1/prec_rw_period)
                      // + X_period * beta_period
                      // + Z_spatial * spatial
-                     // + Z_spatial * u_spatial_str * sqrt(1/prec_spatial)
+                     + Z_spatial * u_spatial_str * sqrt(1/prec_spatial)
                      // + X_urban_dummy * beta_urban_dummy
                      // + Z_country * u_country * sqrt(1/prec_country)
                      // + Z_omega1 * omega1_v * sqrt(1/prec_omega1)
@@ -65,6 +85,8 @@ Type objective_function<Type>::operator() ()
                      // + Z_interaction2 * eta2_v * sqrt(1/prec_eta2)
                      // + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
                      );
+  
+  // vector<Type> logit_obs_p(logit_p + bias_stuff);
 
   vector<Type> p(invlogit(logit_p));  //ip dealised set of P
   
@@ -97,17 +119,21 @@ Type objective_function<Type>::operator() ()
   }
   
   // vector<Type> single_row_of_probs;
-  // 
   // single_row_of_probs = p_norm.row(1);
-
-  // REPORT(p);
-  // REPORT(p_arr);
-  // REPORT(single_row_of_probs);
-  REPORT(p_norm);
-  // REPORT(log_prec_rw_age);
   
-
-
+// 
+//   int num_rows = p_norm.rows();
+//   int num_cols = p_norm.cols();
+//   
+//   vector<Type> p_norm_vector(num_rows * num_cols);
+//   for (int i = 0; i < num_rows; ++i) {
+//     for (int j = 0; j < num_cols; ++j) {
+//       p_norm_vector[i * num_cols + j] = p_norm(i, j);
+//     }
+//   }
+  
+  REPORT(p_norm);
+  
   return nll;
 
 }

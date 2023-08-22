@@ -7,31 +7,43 @@ library(countrycode)
 library(Matrix)
 library(TMB)
 
-# geographies <- read_sf(moz.utils::national_areas()) %>%
-#   st_make_valid() %>%
-#   arrange(area_id) %>%
-#   mutate(
-#     id.iso3 = row_number()
-#   )
-# 
+iso3 = moz.utils::ssa_iso3()
+
+geographies <- read_sf(moz.utils::national_areas()) %>%
+  st_make_valid() %>%
+  arrange(area_id) %>%
+  mutate(
+    id.iso3 = row_number()
+  )
+
 # nb <- INLA::inla.read.graph(moz.utils::national_adj())
+
+# nb <- geographies %>% 
+#   arrange(id.iso3) %>% 
+#   spdep::poly2nb() %>% 
+#   `names<-`(geographies$area_id)
+# 
+# nb <- lapply(nb, as.integer)
+# class(nb) <-  "nb"
 # 
 # adj <- spdep::nb2mat(nb, zero.policy = TRUE, style = "B")
 # R_spatial <- INLA::inla.scale.model(diag(rowSums(adj)) - 0.99*adj,
 #                                     constr = list(A = matrix(1,1, nrow(adj))), e = 0)
-# 
-# 
-# nb <- geographies %>%
-#   arrange(id.iso3) %>%
-#   spdep::poly2nb() %>%
-#   `names<-`(geographies$area_id)
-# 
-# nb <- lapply(nb, as.integer)
-# class(nb) <- "nb"
-# 
-# adj <- spdep::nb2mat(nb, zero.policy=TRUE, style="B")
-# R_spatial <- INLA::inla.scale.model(diag(rowSums(adj)) - 0.99*adj,
-#                                     constr = list(A = matrix(1, 1, nrow(adj)), e = 0))
+
+
+
+
+nb <- geographies %>%
+  arrange(id.iso3) %>%
+  spdep::poly2nb() %>%
+  `names<-`(geographies$area_id)
+
+nb <- lapply(nb, as.integer)
+class(nb) <- "nb"
+
+adj <- spdep::nb2mat(nb, zero.policy=TRUE, style="B")
+R_spatial <- INLA::inla.scale.model(diag(rowSums(adj)) - 0.99*adj,
+                                    constr = list(A = matrix(1, 1, nrow(adj)), e = 0))
 
 separate_survey_id <- function(df, kp = T) {
   
@@ -46,7 +58,7 @@ separate_survey_id <- function(df, kp = T) {
   
 }
 
-dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/rds_agedata_1206.rds") %>%
+dat <- readRDS("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/rds_agedata_1206.rds") %>%
   rename(age = category) %>%
   # separate_survey_id() %>%
   separate(survey_id, into = c("iso3", NA), sep = 3, remove = FALSE) %>% 
@@ -75,7 +87,7 @@ dat <- dat %>%
 
                                                           ## `mf_model` --> indices we're going to predict at  - similar to blank rows in INLA - this is what we want to get out
 mf_model <- crossing(
-  # iso3 = ssa_iso3,
+  iso3 = iso3,
  #age_group = unique(dat$age_group)
                      age = 15:49
                      ) %>%
@@ -83,7 +95,7 @@ mf_model <- crossing(
   ungroup() %>%
   mutate(id.age = # factor(to_int(age_group)),
            factor(to_int(age)),                          ##Everything needs to be a factor
-         # id.iso3 = factor(to_int(iso3)),
+         id.iso3 = factor(to_int(iso3)),
          idx = factor(row_number()))
 
 
@@ -104,7 +116,7 @@ dat <- dat %>%
 ## not too sure I follow these matrices too well
 M_obs <- sparse.model.matrix(~0 + idx, dat)             ##n observations long, n columns by age group
 Z_age <- sparse.model.matrix(~0 + id.age, mf_model)     ##n observations long (this time from mf_model), n cols by age group    
-# Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
+Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
 # x <- 0:34
 # k <- seq(-15, 50, by = 5)
@@ -127,32 +139,34 @@ tmb_int$data <- list(
   M_obs = M_obs,
   observed_x = observed_x,
   Z_age = Z_age,
-  R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE)  ##captures relationship between age
-  # Z_spatial = Z_spatial,
-  # R_spatial = R_spatial
+  R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE),  ##captures relationship between age
+  Z_spatial = Z_spatial,
+  R_spatial = R_spatial
   
 )
 
 tmb_int$par <- list(
   beta_0 = 0,
   u_age = rep(0, ncol(Z_age)),                #Random effect for age
-  log_prec_rw_age = 0                         #Manually declare all hyperparameters - here we have log precision for RW over age (standard deviation always fed in as log sigma (or in this case, log precision) so that when exponentiated they are always +ve)
+  log_prec_rw_age = 0 ,                        #Manually declare all hyperparameters - here we have log precision for RW over age (standard deviation always fed in as log sigma (or in this case, log precision) so that when exponentiated they are always +ve)
   
   # lag_logit_phi_age = 0                     #Lag logit forces values between -1 and 1
-  # u_spatial_str = rep(0, ncol(Z_spatial)),
-  # log_prec_spatial = 0
+  u_spatial_str = rep(0, ncol(Z_spatial)),
+  log_prec_spatial = 0
 )
 
 tmb_int$random <- c(                          # PUt everything here except fixed effects (and no hyperparameters)
   "beta_0",
-  "u_age"
-  # "u_spatial_str"
+  "u_age" ,
+  "u_spatial_str"
 )
 
 # setwd("C:/Users/rla121/Dropbox/KP/Individual KP/Code/KP Code/kp-age/")
 TMB::compile("src/tmb.cpp", flags = "-w")
 dyn.load(dynlib("src/tmb"))
 
+file.remove("src/tmb.dll")
+file.remove("src/tmb.o")
 
 # gdbsource("src/tmb.cpp")
 # 
@@ -246,11 +260,63 @@ class(fit) <- "naomi_fit"
 # debugonce(naomi::sample_tmb)
 fit <- naomi::sample_tmb(fit, random_only=TRUE)
 
-int <- rowMeans(fit$sample$single_row_of_probs)
+# int <- rowMeans(fit$sample$single_row_of_probs)
+
+int <- rowMeans(fit$sample$p_norm_vector)
+age <- rep(c(15:49), 14)
+surveys <- rep(1:14, each = 35)
+id.iso3 <- rep(1:39, each = 39)
+
+## with iso3
+
+age <- rep(c(15:49), 546)
+surveys <- rep(1:14, each = 1365)
+id.iso3 <- rep(1:39, each = 490)
+id.iso3 <- rep(c(1:39), 490)
+
+modelled_outcomes <- data.frame(id.iso3, age, surveys, int) %>% mutate(id.iso3 = as.factor(id.iso3))
+
+dat2 <- dat %>% 
+  left_join(modelled_outcomes)
+
+modelled_outcomes <- data.frame(int, age, surveys)
+
+
+
+single_year_to_five_year <- function (df, fifteen_to_49 = TRUE) 
+{
+  df <- df %>% dplyr::mutate(age_group_label = cut(age, c(0, 
+                                                          seq(5, 85, 5) - 1), c(paste0(seq(0, 79, 5), "-", seq(5, 
+                                                                                                               80, 5) - 1), "80+"), include.lowest = TRUE)) %>% dplyr::left_join(naomi::get_age_groups() %>% 
+                                                                                                                                                                                   select(age_group, age_group_label)) %>% dplyr::select(-age_group_label)
+  if (fifteen_to_49) {
+    df %>% dplyr::filter(age %in% 15:49) %>% dplyr::select(-age)
+  }
+  else {
+    df %>% dplyr::select(-age)
+  }
+}
 
 df <- data.frame(age = 15:49, p = int) %>%
-  single_year_to_five_year()
+single_year_to_five_year()
 
 df %>%
   group_by(age_group) %>%
   summarise(p = sum(p))
+
+dat <- dat %>% 
+  mutate(surveys = multi.utils::to_int(survey_id))
+
+modelled_outcomes_to_plot <- modelled_outcomes %>% 
+  left_join(dat) %>% 
+  select(-id.age, -idx) %>% 
+  group_by(surveys) %>% 
+  mutate(observed_dist = n/sum(n)) %>% 
+  ungroup()
+
+modelled_outcomes_to_plot %>% 
+  ggplot(aes(x = age)) + 
+  geom_line(aes(y = observed_dist), color = "black") + 
+  geom_line(aes(y = int, color = survey_id)) +
+  facet_wrap(~survey_id)
+
