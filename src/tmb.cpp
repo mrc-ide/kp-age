@@ -64,17 +64,39 @@ Type objective_function<Type>::operator() ()
 
   nll -= dnorm(u_spatial_str.sum(), Type(0), Type(0.01) * u_spatial_str.size(), 1);
   
+  ///////////// OSBERVATION EFFECTS
   
+  DATA_SPARSE_MATRIX(Z_survey);
+  DATA_SPARSE_MATRIX(R_survey);
+  PARAMETER(log_prec_survey);
+  PARAMETER_VECTOR(u_survey);
+
+  Type prec_survey = exp(log_prec_survey);
+  nll -= dgamma(prec_survey, Type(1), Type(2000), true);
+
+  nll -= Type(-0.5) * (u_survey * (R_survey * u_survey)).sum();
+  nll -= dnorm(u_survey.sum(), Type(0), Type(0.01) * u_survey.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
   
+  //////////// RECRUITMENT METHOD EFFECTS
   
-  
+  DATA_MATRIX(X_method);
+  PARAMETER_VECTOR(beta_method);
+
+  nll -= dnorm(beta_method, Type(0), Type(sqrt(1/0.001)), true).sum();
+  // Type prec_method = exp(log_prec_method);
+  // nll -= dgamma(prec_method, Type(1), Type(2000), true);
+
+  // 
+  // nll -= Type(-0.5) * (u_method * (R_method * u_method)).sum();
+  // nll -= dnorm(u_method.sum(), Type(0), Type(0.01) * u_method.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
+
   // Multinomial model --> Logit is our link 
 
   vector<Type> logit_p(
                      beta_0                                  // Parameter of length 1
                      + Z_age * u_age * sqrt(1/prec_rw_age)   
                      // + Z_period * u_period * sqrt(1/prec_rw_period)
-                     // + X_period * beta_period
+                     + X_period * beta_period
                      // + Z_spatial * spatial
                      + Z_spatial * u_spatial_str * sqrt(1/prec_spatial)
                      // + X_urban_dummy * beta_urban_dummy
@@ -86,22 +108,19 @@ Type objective_function<Type>::operator() ()
                      // + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
                      );
   
-  // vector<Type> logit_obs_p(logit_p + bias_stuff);
-
-  vector<Type> p(invlogit(logit_p));  //ip dealised set of P
-  
-  
-  vector<Type> p_pred(M_obs * p      
-                          // + log_offset_naomi
+  vector<Type> p_pred((M_obs * logit_p)      
+                      + Z_survey * u_survey * sqrt(1/prec_survey)
+                      + X_method * beta_method  
                           );           //get me the perfect p_vector and get me the ones that relate to the data --> which comes from M_obs
   
+  vector<Type> p(invlogit(p_pred));  //ip dealised set of P
   
 
   array<Type> p_arr(number_surveys,number_age);
 
   for(int i=0; i<number_surveys; i++) {
     for(int j=0; j<number_age; j++) {
-      p_arr(i,j) = p_pred((i*number_age) + j);       
+      p_arr(i,j) = p((i*number_age) + j);       
     }
   }
   
@@ -132,7 +151,8 @@ Type objective_function<Type>::operator() ()
 //     }
 //   }
   
-  REPORT(p_norm);
+  // REPORT(p_norm);
+  REPORT(logit_p);
   
   return nll;
 
