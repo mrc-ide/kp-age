@@ -87,7 +87,7 @@ dat <- dat %>%
   
       # moz.utils::single_year_to_five_year() %>%
   # group_by(iso3, survey_id, age_group) %>%
-  group_by(iso3, survey_id, age, method) %>% 
+  group_by(iso3, survey_id, age, method, year) %>% 
   summarise(n = sum(n)) %>% 
   ungroup() %>% 
   mutate(id.method = ifelse(method == "convenience", 1, 0))
@@ -96,6 +96,7 @@ dat <- dat %>%
                                                           ## `mf_model` --> indices we're going to predict at  - similar to blank rows in INLA - this is what we want to get out
 mf_model <- crossing(
   iso3 = iso3,
+  year = seq(1990,2023, 1),
  #age_group = unique(dat$age_group)
                      age = 15:49
                      ) %>%
@@ -104,13 +105,14 @@ mf_model <- crossing(
   mutate(id.age = # factor(to_int(age_group)),
            factor(to_int(age)),                          ##Everything needs to be a factor
          id.iso3 = factor(to_int(iso3)),
-         idx = factor(row_number()))
+         idx = factor(row_number()),
+         id.year = as.numeric(factor(year))-1)
 
 
 dat <- crossing(age = 15:49,
-                select(dat, iso3, survey_id, id.method)) %>%
-  left_join(dat %>% select(survey_id, iso3, age, n, id.method)) %>%
-  select(iso3, survey_id, age, n, id.method) %>%
+                select(dat, iso3, survey_id, id.method, year)) %>%
+  left_join(dat %>% select(survey_id, iso3, age, n, id.method, year)) %>%
+  select(iso3, survey_id, age, n, id.method, year) %>%
   arrange(survey_id, age)
 
 dat[is.na(dat)] <- 0
@@ -136,7 +138,9 @@ Z_survey <- sparse.model.matrix(~0 + survey_id, dat)
 
 X_method <- model.matrix(~0 + id.method, dat)
 
+X_period <- model.matrix(~0 + id.year, mf_model)
 
+Z_interaction3 <-  mgcv::tensor.prod.model.matrix(list(Z_spatial, Z_age))
 
 tmb_int <- list()
 
@@ -162,7 +166,11 @@ tmb_int$data <- list(
   Z_survey = Z_survey,
   R_survey = as(diag(1, nrow = length(unique(dat$survey_id))), "dgCMatrix"),
   
-  X_method = X_method
+  X_method = X_method,
+  
+  X_period = X_period,
+  
+  Z_interaction3 = Z_interaction3
  
 )
 
@@ -178,8 +186,15 @@ tmb_int$par <- list(
   u_survey = rep(0, ncol(Z_survey)),
   log_prec_survey = 0,
   
-  beta_method = rep(0, ncol(X_method))
+  beta_method = rep(0, ncol(X_method)),
   # log_prec_method = 0
+  
+  beta_period = rep(0, ncol(X_period)),
+  
+  eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
+  log_prec_eta3 = 0, 
+  # logit_eta3_phi_age = 0
+  lag_logit_eta3_phi_age = 0
 )
 
 tmb_int$random <- c(                          # PUt everything here except hyperparamters
@@ -187,7 +202,9 @@ tmb_int$random <- c(                          # PUt everything here except hyper
   "u_age",
   "u_spatial_str",
   "u_survey",
-  "beta_method"
+  "beta_method",
+  "beta_period",
+  "eta3"
 )
 
 
@@ -375,7 +392,7 @@ dat %>%
   group_by(iso3, survey_id) %>%
   mutate(p = n/sum(n)) %>%
   left_join(estimated_mf %>%
-              group_by(iso3) %>%
+              group_by(iso3, year) %>%
               mutate(across(lower:upper, ~plogis(.x)/sum(plogis(.x))))
             )%>%
   ggplot(aes(x=age)) +

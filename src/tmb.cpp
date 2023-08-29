@@ -64,6 +64,15 @@ Type objective_function<Type>::operator() ()
 
   nll -= dnorm(u_spatial_str.sum(), Type(0), Type(0.01) * u_spatial_str.size(), 1);
   
+  //////////// YEAR FIXED EFFECTS
+  
+  DATA_MATRIX(X_period);
+  PARAMETER_VECTOR(beta_period);
+  
+  nll -= dnorm(beta_period, Type(0), Type(sqrt(1/0.001)), true).sum();
+  
+  
+  
   ///////////// OSBERVATION EFFECTS
   
   DATA_SPARSE_MATRIX(Z_survey);
@@ -90,7 +99,37 @@ Type objective_function<Type>::operator() ()
   // nll -= Type(-0.5) * (u_method * (R_method * u_method)).sum();
   // nll -= dnorm(u_method.sum(), Type(0), Type(0.01) * u_method.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
 
-  // Multinomial model --> Logit is our link 
+  /////////// SPACE AGE INTERACTION
+  
+  DATA_SPARSE_MATRIX(Z_interaction3);
+  
+  PARAMETER_ARRAY(eta3);
+  PARAMETER(log_prec_eta3);
+  PARAMETER(eta3_phi_age);
+  PARAMETER(logit_eta3_phi_age);
+  
+  Type prec_eta3 = exp(log_prec_eta3);
+  nll -= dgamma(prec_eta3, Type(1), Type(2000), true);
+  
+  // nll -= dnorm(lag_logit_eta3_phi_age, Type(3.66116349), Type(0.09653723), true);
+  
+  // Type eta3_phi_age(exp(logit_eta3_phi_age)/(1+exp(logit_eta3_phi_age)));
+  nll -= log(eta3_phi_age) +  log(1 - eta3_phi_age); // Jacobian adjustment for inverse logit'ing the parameter...
+  nll -= dbeta(eta3_phi_age, Type(0.5), Type(0.5), true);
+  
+  nll += SEPARABLE(AR1(Type(eta3_phi_age)), GMRF(R_spatial))(eta3);
+  
+  // Type log_det_Qar1_eta3((eta3.cols() - 1) * log(1 - eta3_phi_age * eta3_phi_age));
+  // nll -= R_spatial * 0.5 * (log_det_Qar1_eta3 - log(2 * PI));
+
+  for (int i = 0; i < eta3.cols(); i++) {
+    nll -= dnorm(eta3.col(i).sum(), Type(0), Type(0.01) * eta3.col(i).size(), true);}
+  
+  vector<Type> eta3_v(eta3);
+  
+  
+  
+  /////////// Multinomial model --> Logit is our link 
 
   vector<Type> logit_p(
                      beta_0                                  // Parameter of length 1
@@ -105,7 +144,7 @@ Type objective_function<Type>::operator() ()
                      // + Z_omega2 * omega2_v * sqrt(1/prec_omega2)
                      // + Z_interaction1 * eta1_v * sqrt(1/prec_eta1)
                      // + Z_interaction2 * eta2_v * sqrt(1/prec_eta2)
-                     // + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
+                     + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
                      );
   
   vector<Type> p_pred((M_obs * logit_p)      
