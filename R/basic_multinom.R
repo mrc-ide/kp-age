@@ -135,7 +135,7 @@ new_agedata <- new_agedata %>%
   left_join(mf_model)
 
 basic_age <- basic_age %>% 
-  mutate(idx = row_number())
+  mutate(idx = factor(row_number()))
 
 M_obs <- sparse.model.matrix(~0 + idx, basic_age)
 Z_age <- sparse.model.matrix(~0 + age_group, basic_age)
@@ -150,7 +150,8 @@ tmb_int$data <- list(
   M_obs = M_obs,
   observed_x = observed_x,
   
-  # Z_age = Z_age,
+  Z_age = Z_age,
+  R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE),
   
   Z_survey = Z_survey,
   R_survey = as(diag(1, nrow = length(unique(dat$survey_id))), "dgCMatrix")
@@ -158,7 +159,9 @@ tmb_int$data <- list(
 
 tmb_int$par <- list(
   beta_0 = 0,
-  # u_age = rep(0, ncol(Z_age)),
+  
+  u_age = rep(0, ncol(Z_age)),
+  log_prec_rw_age = 0,
   
   u_survey = rep(0, ncol(Z_survey)),
   log_prec_survey = 0
@@ -166,8 +169,57 @@ tmb_int$par <- list(
 
 tmb_int$random <- c(                          # PUt everything here except hyperparamters
   "beta_0",
+  "u_age",
   "u_survey"
 )
 
 TMB::compile("src/tmb_sample.cpp", flags = "-w")
-dyn.load(dynlib("src/tmb"))
+dyn.load(dynlib("src/tmb_sample"))
+
+f <- TMB::MakeADFun(data = tmb_int$data,
+                    parameters = tmb_int$par,
+                    DLL = "tmb",
+                    silent=0,
+                    checkParameterOrder=FALSE)
+
+
+if(is.null((f)[[1]])) {
+  stop("TMB model is invalid. This is most likely an indexing error e.g. iterating over dimensions in an array that do not exist. Check mf model object")
+}
+
+
+
+
+
+obj <-  TMB::MakeADFun(data = tmb_int$data,
+                       parameters = tmb_int$par,
+                       DLL = "tmb",
+                       random = tmb_int$random,
+                       hessian = FALSE)
+
+f <- stats::nlminb(obj$par, obj$fn, obj$gr)
+f$par.fixed <- f$par
+f$par.full <- obj$env$last.par
+
+fit <- c(f, obj = list(obj))
+
+fit$sdreport <- sdreport(fit$obj, fit$par)
+sd_report <- fit$sdreport
+sd_report <- summary(sd_report, "all")
+sd_report
+
+# sd_report2 <- data.frame(sd_report) %>% 
+#   filter(Estimate < 1) %>% 
+#   mutate(estimate2 = plogis(Estimate),
+#          sum = sum(Estimate),
+#          norm = estimate2/sum)
+
+class(fit) <- "naomi_fit"
+# debugonce(naomi::sample_tmb)
+fit <- naomi::sample_tmb(fit, random_only=TRUE)
+int <- apply(fit$sample$logit_p, 1, quantile, c(0.025, 0.975))
+
+estimated_mf <- mf_model %>%
+  mutate(lower = int[1,],
+         mean = rowMeans(fit$sample$logit_p),
+         upper = int[2,])

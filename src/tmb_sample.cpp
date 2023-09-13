@@ -34,16 +34,16 @@ Type objective_function<Type>::operator() ()
 
   ///////////////////
 
-  // DATA_SPARSE_MATRIX(Z_age);
-  // DATA_SPARSE_MATRIX(R_age);
-  // PARAMETER(log_prec_rw_age);
-  // PARAMETER_VECTOR(u_age);
-  // 
-  // Type prec_rw_age = exp(log_prec_rw_age);
-  // nll -= dgamma(prec_rw_age, Type(1), Type(2000), true);
-  // 
-  // nll -= Type(-0.5) * (u_age * (R_age * u_age)).sum();
-  // nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
+  DATA_SPARSE_MATRIX(Z_age);
+  DATA_SPARSE_MATRIX(R_age);
+  PARAMETER(log_prec_rw_age);
+  PARAMETER_VECTOR(u_age);
+
+  Type prec_rw_age = exp(log_prec_rw_age);
+  nll -= dgamma(prec_rw_age, Type(1), Type(2000), true);
+
+  nll -= Type(-0.5) * (u_age * (R_age * u_age)).sum();
+  nll -= dnorm(u_age.sum(), Type(0), Type(0.01) * u_age.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
 
 
   ///////////////////////
@@ -75,17 +75,17 @@ Type objective_function<Type>::operator() ()
   // 
   ///////////// OSBERVATION EFFECTS
   
-  // DATA_SPARSE_MATRIX(Z_survey);
-  // DATA_SPARSE_MATRIX(R_survey);
-  // PARAMETER(log_prec_survey);
-  // PARAMETER_VECTOR(u_survey);
-  // 
-  // Type prec_survey = exp(log_prec_survey);
-  // nll -= dgamma(prec_survey, Type(1), Type(2000), true);
-  // 
-  // nll -= Type(-0.5) * (u_survey * (R_survey * u_survey)).sum();
-  // nll -= dnorm(u_survey.sum(), Type(0), Type(0.01) * u_survey.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
-  // 
+  DATA_SPARSE_MATRIX(Z_survey);
+  DATA_SPARSE_MATRIX(R_survey);
+  PARAMETER(log_prec_survey);
+  PARAMETER_VECTOR(u_survey);
+
+  Type prec_survey = exp(log_prec_survey);
+  nll -= dgamma(prec_survey, Type(1), Type(2000), true);
+
+  nll -= Type(-0.5) * (u_survey * (R_survey * u_survey)).sum();
+  nll -= dnorm(u_survey.sum(), Type(0), Type(0.01) * u_survey.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
+
   //////////// RECRUITMENT METHOD EFFECTS
   
   // DATA_MATRIX(X_method);
@@ -133,7 +133,7 @@ Type objective_function<Type>::operator() ()
 
   vector<Type> logit_p(
                      beta_0                                  // Parameter of length 1
-                     // + Z_age * u_age * sqrt(1/prec_rw_age)   
+                     + Z_age * u_age * sqrt(1/prec_rw_age)
                      // + Z_period * u_period * sqrt(1/prec_rw_period)
                      // + X_period * beta_period
                      // + Z_spatial * spatial
@@ -146,54 +146,56 @@ Type objective_function<Type>::operator() ()
                      // + Z_interaction2 * eta2_v * sqrt(1/prec_eta2)
                      // + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
                      );
-  
-  // vector<Type> p_pred((M_obs * logit_p)      
-  //                     + Z_survey * u_survey * sqrt(1/prec_survey)
-  //                     // + X_method * beta_method  
-  //                         );           //get me the perfect p_vector and get me the ones that relate to the data --> which comes from M_obs
-  
-  // vector<Type> p(invlogit(p_pred));  //ip dealised set of P
-  
-  vector<Type> p(invlogit(logit_p));
+
+  vector<Type> p_pred((M_obs * logit_p)   //beta_0) 
+                      + Z_survey * u_survey * sqrt(1/prec_survey)
+                      // + X_method * beta_method
+                          );           //get me the perfect p_vector and get me the ones that relate to the data --> which comes from M_obs
+
+  vector<Type> p(invlogit(p_pred));  //ip dealised set of P
+
+  // vector<Type> p(invlogit(logit_p));
 
   array<Type> p_arr(number_surveys,number_age);
 
   for(int i=0; i<number_surveys; i++) {
     for(int j=0; j<number_age; j++) {
-      p_arr(i,j) = p((i*number_age) + j);       
+      p_arr(i,j) = p((i*number_age) + j);
     }
   }
-  
+
   matrix<Type> p_norm(number_surveys, number_age);
 
   for (int i=0; i<number_surveys; i++) {
     vector<Type> p_row(p_arr.matrix().row(i));   //p_row is composed of the i'th row of p_arr
     vector<Type> p_row_norm(p_row/p_row.sum());  // we normalise it
-    vector<Type> x_row(observed_x.row(i));       //i_th row of the data 
+    vector<Type> x_row(observed_x.row(i));       //i_th row of the data
 
     nll -= dmultinom(x_row, p_row_norm, true);
-    
+
     p_norm.row(i) = p_row_norm;
-    
+
   }
-  
+
   // vector<Type> single_row_of_probs;
   // single_row_of_probs = p_norm.row(1);
-  
-// 
+
+//
 //   int num_rows = p_norm.rows();
 //   int num_cols = p_norm.cols();
-//   
+//
 //   vector<Type> p_norm_vector(num_rows * num_cols);
 //   for (int i = 0; i < num_rows; ++i) {
 //     for (int j = 0; j < num_cols; ++j) {
 //       p_norm_vector[i * num_cols + j] = p_norm(i, j);
 //     }
 //   }
-  
+
   // REPORT(p_norm);
-  REPORT(logit_p);
+  // REPORT(logit_p);
   
+  REPORT(p_pred)
+
   return nll;
 
 }
