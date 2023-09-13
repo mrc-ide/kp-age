@@ -60,7 +60,7 @@ separate_survey_id <- function(df, kp = T) {
 }
 
 # dat <- readRDS("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/rds_agedata_1206.rds") %>%
-dat <- read_csv("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agemoddat_20_06.csv")  %>% 
+dat <- read_csv("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agemoddat_20_06.csv", show_col_types = F)  %>% 
   group_by(survey_id) %>% 
   mutate(fullsum = sum(n),
          n = estimate*fullsum) %>%

@@ -105,15 +105,15 @@ Type objective_function<Type>::operator() ()
   
   PARAMETER_ARRAY(eta3);
   PARAMETER(log_prec_eta3);
-  PARAMETER(eta3_phi_age);
   PARAMETER(logit_eta3_phi_age);
+  
   
   Type prec_eta3 = exp(log_prec_eta3);
   nll -= dgamma(prec_eta3, Type(1), Type(2000), true);
   
-  // nll -= dnorm(lag_logit_eta3_phi_age, Type(3.66116349), Type(0.09653723), true);
+  // nll -= dnorm(logit_eta3_phi_age, Type(3.66116349), Type(0.09653723), true);
   
-  // Type eta3_phi_age(exp(logit_eta3_phi_age)/(1+exp(logit_eta3_phi_age)));
+  Type eta3_phi_age(exp(logit_eta3_phi_age)/(1+exp(logit_eta3_phi_age)));
   nll -= log(eta3_phi_age) +  log(1 - eta3_phi_age); // Jacobian adjustment for inverse logit'ing the parameter...
   nll -= dbeta(eta3_phi_age, Type(0.5), Type(0.5), true);
   
