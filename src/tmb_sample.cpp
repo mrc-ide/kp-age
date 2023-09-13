@@ -192,9 +192,9 @@ Type objective_function<Type>::operator() ()
 //   }
 
   // REPORT(p_norm);
-  // REPORT(logit_p);
+  REPORT(logit_p);
   
-  REPORT(p_pred)
+  //REPORT(p_pred)
 
   return nll;
 

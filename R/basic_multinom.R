@@ -107,6 +107,7 @@ new_agedata <- data.frame(
 
 model <-VGAM::vglm(age_group ~ 1, family = "multinomial", data = new_agedata)
 plot(model@fitted.values[1,])
+summary(model)
 
 data.frame(model@fitted.values[1,]) %>% 
   rownames_to_column() %>% 
@@ -154,7 +155,7 @@ tmb_int$data <- list(
   R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE),
   
   Z_survey = Z_survey,
-  R_survey = as(diag(1, nrow = length(unique(dat$survey_id))), "dgCMatrix")
+  R_survey = as(diag(1, nrow = length(unique(basic_age$iso))), "dgCMatrix")
   )
 
 tmb_int$par <- list(
@@ -178,7 +179,7 @@ dyn.load(dynlib("src/tmb_sample"))
 
 f <- TMB::MakeADFun(data = tmb_int$data,
                     parameters = tmb_int$par,
-                    DLL = "tmb",
+                    DLL = "tmb_sample",
                     silent=0,
                     checkParameterOrder=FALSE)
 
@@ -193,7 +194,7 @@ if(is.null((f)[[1]])) {
 
 obj <-  TMB::MakeADFun(data = tmb_int$data,
                        parameters = tmb_int$par,
-                       DLL = "tmb",
+                       DLL = "tmb_sample",
                        random = tmb_int$random,
                        hessian = FALSE)
 
@@ -219,7 +220,18 @@ class(fit) <- "naomi_fit"
 fit <- naomi::sample_tmb(fit, random_only=TRUE)
 int <- apply(fit$sample$logit_p, 1, quantile, c(0.025, 0.975))
 
-estimated_mf <- mf_model %>%
+estimated_mf <- basic_age %>%
   mutate(lower = int[1,],
          mean = rowMeans(fit$sample$logit_p),
          upper = int[2,])
+
+
+estimated_mf %>%
+  group_by(iso) %>% 
+  mutate(across(lower:upper, ~plogis(.x)/sum(plogis(.x)))) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = age_group)) +
+  geom_line(aes(y = mean)) +
+  geom_line(aes(y = prop, color = iso)) +
+  facet_wrap(~iso) +
+  moz.utils::standard_theme()
