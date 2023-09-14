@@ -75,16 +75,16 @@ Type objective_function<Type>::operator() ()
   // 
   ///////////// OSBERVATION EFFECTS
   
-  DATA_SPARSE_MATRIX(Z_survey);
-  DATA_SPARSE_MATRIX(R_survey);
-  PARAMETER(log_prec_survey);
-  PARAMETER_VECTOR(u_survey);
-
-  Type prec_survey = exp(log_prec_survey);
-  nll -= dgamma(prec_survey, Type(1), Type(2000), true);
-
-  nll -= Type(-0.5) * (u_survey * (R_survey * u_survey)).sum();
-  nll -= dnorm(u_survey.sum(), Type(0), Type(0.01) * u_survey.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
+  // DATA_SPARSE_MATRIX(Z_survey);
+  // DATA_SPARSE_MATRIX(R_survey);
+  // PARAMETER(log_prec_survey);
+  // PARAMETER_VECTOR(u_survey);
+  // 
+  // Type prec_survey = exp(log_prec_survey);
+  // nll -= dgamma(prec_survey, Type(1), Type(2000), true);
+  // 
+  // nll -= Type(-0.5) * (u_survey * (R_survey * u_survey)).sum();
+  // nll -= dnorm(u_survey.sum(), Type(0), Type(0.01) * u_survey.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
 
   //////////// RECRUITMENT METHOD EFFECTS
   
@@ -147,14 +147,14 @@ Type objective_function<Type>::operator() ()
                      // + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
                      );
 
-  vector<Type> p_pred((M_obs * logit_p)   //beta_0) 
-                      + Z_survey * u_survey * sqrt(1/prec_survey)
-                      // + X_method * beta_method
-                          );           //get me the perfect p_vector and get me the ones that relate to the data --> which comes from M_obs
+  // vector<Type> p_pred((M_obs * logit_p)   //beta_0) 
+  //                     + Z_survey * u_survey * sqrt(1/prec_survey)
+  //                     // + X_method * beta_method
+  //                         );           //get me the perfect p_vector and get me the ones that relate to the data --> which comes from M_obs
+  // 
+  // vector<Type> p(invlogit(p_pred));  //ip dealised set of P
 
-  vector<Type> p(invlogit(p_pred));  //ip dealised set of P
-
-  // vector<Type> p(invlogit(logit_p));
+  vector<Type> p(invlogit(logit_p));
 
   array<Type> p_arr(number_surveys,number_age);
 

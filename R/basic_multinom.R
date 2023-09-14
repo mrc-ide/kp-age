@@ -136,7 +136,8 @@ new_agedata <- new_agedata %>%
   left_join(mf_model)
 
 basic_age <- basic_age %>% 
-  mutate(idx = factor(row_number()))
+  mutate(idx = factor(row_number()),
+         age_group = factor(age_group))
 
 M_obs <- sparse.model.matrix(~0 + idx, basic_age)
 Z_age <- sparse.model.matrix(~0 + age_group, basic_age)
@@ -152,26 +153,26 @@ tmb_int$data <- list(
   observed_x = observed_x,
   
   Z_age = Z_age,
-  R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE),
+  R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE)
   
-  Z_survey = Z_survey,
-  R_survey = as(diag(1, nrow = length(unique(basic_age$iso))), "dgCMatrix")
+  # Z_survey = Z_survey,
+  # R_survey = as(diag(1, nrow = length(unique(basic_age$iso))), "dgCMatrix")
   )
 
 tmb_int$par <- list(
   beta_0 = 0,
   
   u_age = rep(0, ncol(Z_age)),
-  log_prec_rw_age = 0,
+  log_prec_rw_age = 0
   
-  u_survey = rep(0, ncol(Z_survey)),
-  log_prec_survey = 0
+  # u_survey = rep(0, ncol(Z_survey)),
+  # log_prec_survey = 0
 )
 
 tmb_int$random <- c(                          # PUt everything here except hyperparamters
   "beta_0",
-  "u_age",
-  "u_survey"
+  "u_age"
+  # "u_survey"
 )
 
 TMB::compile("src/tmb_sample.cpp", flags = "-w")
@@ -209,11 +210,7 @@ sd_report <- fit$sdreport
 sd_report <- summary(sd_report, "all")
 sd_report
 
-# sd_report2 <- data.frame(sd_report) %>% 
-#   filter(Estimate < 1) %>% 
-#   mutate(estimate2 = plogis(Estimate),
-#          sum = sum(Estimate),
-#          norm = estimate2/sum)
+
 
 class(fit) <- "naomi_fit"
 # debugonce(naomi::sample_tmb)
@@ -227,9 +224,10 @@ estimated_mf <- basic_age %>%
 
 
 estimated_mf %>%
-  group_by(iso) %>% 
+  #group_by(iso) %>% 
   mutate(across(lower:upper, ~plogis(.x)/sum(plogis(.x)))) %>% 
-  ungroup() %>% 
+  #ungroup() %>% 
+  mutate(age_group = type.convert(age_group, as.is = T)) %>% 
   ggplot(aes(x = age_group)) +
   geom_line(aes(y = mean)) +
   geom_line(aes(y = prop, color = iso)) +
