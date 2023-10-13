@@ -107,22 +107,69 @@ new_agedata <- data.frame(
 
 model <-VGAM::vglm(age_group ~ 1, family = "multinomial", data = new_agedata)
 plot(model@fitted.values[1,])
-summary(model)
+model
 
-data.frame(model@fitted.values[1,]) %>% 
+basic_model <- data.frame(model@fitted.values[1,]) %>% 
   rownames_to_column() %>% 
-  mutate(age_group = factor(rowname),
+  mutate(age_group = as.numeric(rowname),
          value = as.numeric(`model.fitted.values.1...`)) %>% 
+  right_join(basic_age) %>% 
   ggplot() + 
-  geom_point(aes(x = age_group, y = value), shape = 4, size = 2) + 
-  geom_point(aes(x = basic_age$age_group, y = basic_age$prop, color = basic_age$iso))
+  geom_line(aes(x = age_group, y = value), linewidth = 1) + 
+  geom_point(aes(x = age_group, y = prop, color = iso)) +
+  moz.utils::standard_theme()
 
 basic_age <- basic_age %>% 
   mutate(age_group = factor(age_group))
 
+
+model2 <-VGAM::vglm(age_group ~ 1 + year, family = "multinomial", data = new_agedata)
+plot(model2@fitted.values[1,])
+model2
+
+yearfe_model <- data.frame(model2@fitted.values[1,]) %>% 
+  rownames_to_column() %>% 
+  mutate(age_group = as.numeric(rowname),
+         value = as.numeric(`model2.fitted.values.1...`)) %>% 
+  right_join(basic_age) %>% 
+  ggplot() + 
+  geom_line(aes(x = age_group, y = value), linewidth = 1) + 
+  geom_point(aes(x = age_group, y = prop, color = iso)) +
+  moz.utils::standard_theme()
+
+
+model3 <-VGAM::vglm(age_group ~ 1 + year + iso, family = "multinomial", data = new_agedata)
+plot(model3@fitted.values[1,])
+model3
+
+##Error in vglm.fitter(x = x, y = y, w = w, offset = offset, Xm2 = Xm2,  : 
+#vglm() only handles full-rank models (currently)
+
+
+yearfe_model <- data.frame(model3@fitted.values[1,]) %>% 
+  rownames_to_column() %>% 
+  mutate(age_group = as.numeric(rowname),
+         value = as.numeric(`model3.fitted.values.1...`)) %>% 
+  right_join(basic_age) %>% 
+  ggplot() + 
+  geom_line(aes(x = age_group, y = value), linewidth = 1) + 
+  geom_point(aes(x = age_group, y = prop, color = iso)) +
+  moz.utils::standard_theme()
+
+ggpubr::ggarrange(basic_model, yearfe_model)
+
 ggplot(
   geom_point(aes(model, y = model@fitted.values[1,]))
 )
+
+
+
+
+
+
+## TMB 
+library(Matrix)
+library(TMB)
 
 mf_model <- crossing(
   iso = c(1,2,3),
@@ -137,11 +184,14 @@ new_agedata <- new_agedata %>%
 
 basic_age <- basic_age %>% 
   mutate(idx = factor(row_number()),
-         age_group = factor(age_group))
+         age_group = factor(age_group),
+         year = factor(year))
 
 M_obs <- sparse.model.matrix(~0 + idx, basic_age)
 Z_age <- sparse.model.matrix(~0 + age_group, basic_age)
 Z_survey <- sparse.model.matrix(~0 + iso, basic_age)
+
+X_year <- model.matrix(~0 + year, basic_age)
 
 
 tmb_int <- list()
@@ -152,8 +202,12 @@ tmb_int$data <- list(
   M_obs = M_obs,
   observed_x = observed_x,
   
-  Z_age = Z_age,
-  R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE)
+  #age as a FE
+  X_year = X_year
+
+  #age as a rw 
+  # Z_age = Z_age,
+  # R_age = dfertility::make_rw_structure_matrix(ncol(Z_age), 1, adjust_diagonal = TRUE)
   
   # Z_survey = Z_survey,
   # R_survey = as(diag(1, nrow = length(unique(basic_age$iso))), "dgCMatrix")
@@ -162,8 +216,11 @@ tmb_int$data <- list(
 tmb_int$par <- list(
   beta_0 = 0,
   
-  u_age = rep(0, ncol(Z_age)),
-  log_prec_rw_age = 0
+  
+  beta_year = rep(0, ncol(X_year))
+  
+  # u_age = rep(0, ncol(Z_age)),
+  # log_prec_rw_age = 0
   
   # u_survey = rep(0, ncol(Z_survey)),
   # log_prec_survey = 0
@@ -171,9 +228,14 @@ tmb_int$par <- list(
 
 tmb_int$random <- c(                          # PUt everything here except hyperparamters
   "beta_0",
-  "u_age"
+  "beta_year"
+  # "u_age"
   # "u_survey"
 )
+
+file.remove("src/tmb_sample.dll")
+file.remove("src/tmb_sample.o")
+
 
 TMB::compile("src/tmb_sample.cpp", flags = "-w")
 dyn.load(dynlib("src/tmb_sample"))
@@ -203,6 +265,7 @@ f <- stats::nlminb(obj$par, obj$fn, obj$gr)
 f$par.fixed <- f$par
 f$par.full <- obj$env$last.par
 
+
 fit <- c(f, obj = list(obj))
 
 fit$sdreport <- sdreport(fit$obj, fit$par)
@@ -224,9 +287,9 @@ estimated_mf <- basic_age %>%
 
 
 estimated_mf %>%
-  #group_by(iso) %>% 
-  mutate(across(lower:upper, ~plogis(.x)/sum(plogis(.x)))) %>% 
-  #ungroup() %>% 
+  group_by(iso) %>%
+  mutate(across(lower:upper, ~plogis(.x)/sum(plogis(.x)))) %>%
+  ungroup() %>%
   mutate(age_group = type.convert(age_group, as.is = T)) %>% 
   ggplot(aes(x = age_group)) +
   geom_line(aes(y = mean)) +
