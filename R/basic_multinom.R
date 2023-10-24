@@ -369,7 +369,7 @@ observed_x <- matrix(basic_age$count, nrow = length(unique(basic_age$survey_id))
 tmb_int$data <- list(
   M_obs = M_obs,
   observed_x = observed_x,
-  X_stand_in
+  X_stand_in = X_stand_in
   
   #year as a FE
   # X_year = X_year
@@ -414,6 +414,7 @@ f <- TMB::MakeADFun(data = tmb_int$data,
                     DLL = "tmb_sample",
                     silent=0,
                     checkParameterOrder=FALSE)
+
 
 
 if(is.null((f)[[1]])) {
