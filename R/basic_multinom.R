@@ -7,7 +7,7 @@ nga <- nga %>%
   mutate(age2 = age,
   age = as.factor(age))
 
-model <- multinom(age ~ 1, data = nga)
+model <- multinom(age_group ~ 1 + year * iso , data = new_agedata)
 
 plot(model$fitted.values[1,])
 
@@ -86,11 +86,11 @@ full_data %>%
 
 
 
-basic_age <- readxl::read_xlsx("C:/Users/rla121/Downloads/basic_age_mod.xlsx") %>% 
+basic_age <- readxl::read_xlsx("data (public)/basic_age_mod.xlsx") %>% 
   filter(!age_group == 6) %>% 
   mutate(iso = factor(multi.utils::to_int(country))) %>% 
   mutate(odds = prop/(1- prop)) %>% 
-  group_by(country) %>% 
+  group_by(survey_id) %>% 
   mutate(odds_ratio = odds/odds[age_group == 1]) %>% 
   ungroup()
 
@@ -101,66 +101,232 @@ new_agedata <- data.frame(
   age_group = rep(basic_age$age_group, basic_age$count),
   iso = rep(basic_age$iso, basic_age$count)
 ) %>% 
-  left_join((basic_age %>% select(country, iso, year, old_age, age_group))) %>% 
+  left_join((basic_age %>% select(country, iso, year, old_age, age_group, survey_id))) %>% 
   mutate(age_group = as.factor(age_group),
          iso = as.factor(iso))
 
-model <-VGAM::vglm(age_group ~ 1, family = "multinomial", data = new_agedata)
-plot(model@fitted.values[1,])
-model
+# model <-VGAM::vglm(age_group ~ 1 + year, family = "multinomial", data = new_agedata)
+# plot(model@fitted.values[1,])
+# model
 
-basic_model <- data.frame(model@fitted.values[1,]) %>% 
-  rownames_to_column() %>% 
-  mutate(age_group = as.numeric(rowname),
-         value = as.numeric(`model.fitted.values.1...`)) %>% 
-  right_join(basic_age) %>% 
-  ggplot() + 
-  geom_line(aes(x = age_group, y = value), linewidth = 1) + 
-  geom_point(aes(x = age_group, y = prop, color = iso)) +
-  moz.utils::standard_theme()
+model <- multinom(age_group ~ 1 , data = new_agedata)
+summary(model)
+exp(coef(model))
 
-basic_age <- basic_age %>% 
-  mutate(age_group = factor(age_group))
+predicted_probs <- predict(model, newdata = new_agedata, type = "probs")
 
+predicted_probs <- data.frame(predicted_probs) %>% distinct() %>% pivot_longer(cols = everything(), names_to = "age_group", values_to = "prob")
 
-model2 <-VGAM::vglm(age_group ~ 1 + year, family = "multinomial", data = new_agedata)
-plot(model2@fitted.values[1,])
-model2
+prediction_data <- basic_age %>% 
+  left_join(predicted_probs %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+                                                             age_group == "X2" ~ 2,
+                                                             age_group == "X3" ~ 3,
+                                                             age_group == "X4" ~ 4,
+                                                             age_group == "X5" ~ 5)))
 
-yearfe_model <- data.frame(model2@fitted.values[1,]) %>% 
-  rownames_to_column() %>% 
-  mutate(age_group = as.numeric(rowname),
-         value = as.numeric(`model2.fitted.values.1...`)) %>% 
-  right_join(basic_age) %>% 
-  ggplot() + 
-  geom_line(aes(x = age_group, y = value), linewidth = 1) + 
-  geom_point(aes(x = age_group, y = prop, color = iso)) +
+intercept_only <- prediction_data %>% 
+  ggplot(aes(x = age_group)) + 
+  geom_line(aes(y = prob)) + 
+  geom_point(aes(y = prop)) + 
+  facet_wrap(~year+country) +
   moz.utils::standard_theme()
 
 
-model3 <-VGAM::vglm(age_group ~ 1 + year + iso, family = "multinomial", data = new_agedata)
-plot(model3@fitted.values[1,])
-model3
+model2 <- multinom(age_group ~ 1 + year , data = new_agedata)
+summary(model2)
+exp(coef(model2))
 
-##Error in vglm.fitter(x = x, y = y, w = w, offset = offset, Xm2 = Xm2,  : 
-#vglm() only handles full-rank models (currently)
+predicted_probs2 <- predict(model2, newdata = new_agedata, type = "probs")
 
+predicted_probs2 <- data.frame(predicted_probs2) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, year)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
 
-yearfe_model <- data.frame(model3@fitted.values[1,]) %>% 
-  rownames_to_column() %>% 
-  mutate(age_group = as.numeric(rowname),
-         value = as.numeric(`model3.fitted.values.1...`)) %>% 
-  right_join(basic_age) %>% 
-  ggplot() + 
-  geom_line(aes(x = age_group, y = value), linewidth = 1) + 
-  geom_point(aes(x = age_group, y = prop, color = iso)) +
+prediction_data2 <- basic_age %>% 
+  left_join(predicted_probs2 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+                                                             age_group == "X2" ~ 2,
+                                                             age_group == "X3" ~ 3,
+                                                             age_group == "X4" ~ 4,
+                                                             age_group == "X5" ~ 5)))
+
+year_fe <- prediction_data2 %>% 
+  ggplot(aes(x = age_group)) + 
+  geom_line(aes(y = prob)) + 
+  geom_point(aes(y = prop)) + 
+  facet_wrap(~country+year) +
   moz.utils::standard_theme()
 
-ggpubr::ggarrange(basic_model, yearfe_model)
 
-ggplot(
-  geom_point(aes(model, y = model@fitted.values[1,]))
-)
+model3 <- multinom(age_group ~ 1 + year + iso, data = new_agedata)
+summary(model3)
+exp(coef(model3))
+
+predicted_probs3 <- predict(model3, newdata = new_agedata, type = "probs")
+
+predicted_probs3 <- data.frame(predicted_probs3) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, year, country)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+
+prediction_data3 <- basic_age %>% 
+  left_join(predicted_probs3 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+                                                              age_group == "X2" ~ 2,
+                                                              age_group == "X3" ~ 3,
+                                                              age_group == "X4" ~ 4,
+                                                              age_group == "X5" ~ 5)))
+
+year_iso_fe <- prediction_data3 %>% 
+  ggplot(aes(x = age_group)) + 
+  geom_line(aes(y = prob)) + 
+  geom_point(aes(y = prop)) + 
+  facet_wrap(~country+year) +
+  moz.utils::standard_theme()
+
+
+
+model4 <- multinom(age_group ~ 1 + iso, data = new_agedata)
+summary(model4)
+exp(coef(model4))
+
+predicted_probs4 <- predict(model4, newdata = new_agedata, type = "probs")
+
+predicted_probs4 <- data.frame(predicted_probs4) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+
+prediction_data4 <- basic_age %>% 
+  left_join(predicted_probs4 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+                                                              age_group == "X2" ~ 2,
+                                                              age_group == "X3" ~ 3,
+                                                              age_group == "X4" ~ 4,
+                                                              age_group == "X5" ~ 5)))
+
+iso_fe <- prediction_data4 %>% 
+  ggplot(aes(x = age_group)) + 
+  geom_line(aes(y = prob)) + 
+  geom_point(aes(y = prop)) + 
+  facet_wrap(~country+year) +
+  moz.utils::standard_theme()
+
+
+model5 <- multinom(age_group ~ 1 + iso*year, data = new_agedata)
+summary(model5)
+exp(coef(model5))
+
+predicted_probs5 <- predict(model5, newdata = new_agedata, type = "probs")
+
+predicted_probs5 <- data.frame(predicted_probs5) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+
+prediction_data5 <- basic_age %>% 
+  left_join(predicted_probs5 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+                                                              age_group == "X2" ~ 2,
+                                                              age_group == "X3" ~ 3,
+                                                              age_group == "X4" ~ 4,
+                                                              age_group == "X5" ~ 5)))
+
+year_iso_inter <- prediction_data5 %>% 
+  ggplot(aes(x = age_group)) + 
+  geom_line(aes(y = prob)) + 
+  geom_point(aes(y = prop)) + 
+  facet_wrap(~country+year) +
+  moz.utils::standard_theme()
+
+
+model6 <- multinom(age_group ~ 1 + survey_id, data = new_agedata)
+summary(model6)
+exp(coef(model6))
+
+predicted_probs6 <- predict(model6, newdata = new_agedata, type = "probs")
+
+predicted_probs6 <- data.frame(predicted_probs6) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year, survey_id)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+
+prediction_data6 <- basic_age %>% 
+  left_join(predicted_probs6 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+                                                              age_group == "X2" ~ 2,
+                                                              age_group == "X3" ~ 3,
+                                                              age_group == "X4" ~ 4,
+                                                              age_group == "X5" ~ 5)))
+
+prediction_data6 %>% 
+  ggplot(aes(x = age_group)) + 
+  geom_line(aes(y = prob)) + 
+  geom_point(aes(y = prop)) + 
+  facet_wrap(~country+year) +
+  moz.utils::standard_theme()
+
+
+
+model6 <- multinom(age_group ~ 1 + survey_id + year, data = new_agedata)
+summary(model6)
+exp(coef(model6))
+
+predicted_probs6 <- predict(model6, newdata = new_agedata, type = "probs")
+
+predicted_probs6 <- data.frame(predicted_probs6) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year, survey_id)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+
+prediction_data6 <- basic_age %>% 
+  left_join(predicted_probs6 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+                                                              age_group == "X2" ~ 2,
+                                                              age_group == "X3" ~ 3,
+                                                              age_group == "X4" ~ 4,
+                                                              age_group == "X5" ~ 5)))
+
+prediction_data6 %>% 
+  ggplot(aes(x = age_group)) + 
+  geom_line(aes(y = prob)) + 
+  geom_point(aes(y = prop)) + 
+  facet_wrap(~country+year) +
+  moz.utils::standard_theme()
+
+
+
+# model <- multinom(age_group ~ 1 )
+# 
+# basic_model <- data.frame(model@fitted.values[1,]) %>% 
+#   rownames_to_column() %>% 
+#   mutate(age_group = as.numeric(rowname),
+#          value = as.numeric(`model.fitted.values.1...`)) %>% 
+#   right_join(basic_age) %>% 
+#   ggplot() + 
+#   geom_line(aes(x = age_group, y = value), linewidth = 1) + 
+#   geom_point(aes(x = age_group, y = prop, color = iso)) +
+#   moz.utils::standard_theme()
+# 
+# basic_age <- basic_age %>% 
+#   mutate(age_group = factor(age_group))
+# 
+# 
+# model2 <-VGAM::vglm(age_group ~ 1 + year, family = "multinomial", data = new_agedata)
+# plot(model2@fitted.values[1,])
+# model2
+# 
+# yearfe_model <- data.frame(model2@fitted.values[1,]) %>% 
+#   rownames_to_column() %>% 
+#   mutate(age_group = as.numeric(rowname),
+#          value = as.numeric(`model2.fitted.values.1...`)) %>% 
+#   right_join(basic_age) %>% 
+#   ggplot() + 
+#   geom_line(aes(x = age_group, y = value), linewidth = 1) + 
+#   geom_point(aes(x = age_group, y = prop, color = iso)) +
+#   moz.utils::standard_theme()
+# 
+# 
+# model3 <-VGAM::vglm(age_group ~ 1 + year + country, family = "multinomial", data = new_agedata)
+# plot(model3@fitted.values[1,])
+# model3
+# 
+# ##Error in vglm.fitter(x = x, y = y, w = w, offset = offset, Xm2 = Xm2,  : 
+# #vglm() only handles full-rank models (currently)
+# 
+# 
+# yearfe_model <- data.frame(model3@fitted.values[1,]) %>% 
+#   rownames_to_column() %>% 
+#   mutate(age_group = as.numeric(rowname),
+#          value = as.numeric(`model3.fitted.values.1...`)) %>% 
+#   right_join(basic_age) %>% 
+#   ggplot() + 
+#   geom_line(aes(x = age_group, y = value), linewidth = 1) + 
+#   geom_point(aes(x = age_group, y = prop, color = iso)) +
+#   moz.utils::standard_theme()
+# 
+# ggpubr::ggarrange(basic_model, yearfe_model)
+# 
+# ggplot(
+#   geom_point(aes(model, y = model@fitted.values[1,]))
+# )
 
 
 
@@ -174,7 +340,8 @@ library(TMB)
 mf_model <- crossing(
   iso = c(1,2,3),
   age_group = c(1,2,3,4,5)
-) %>% 
+,
+year = c(2006, 2009, 2011, 2014, 2017)) %>% 
   mutate(iso = factor(iso),
          age_group = factor(age_group),
          idx = factor(row_number()))
@@ -193,17 +360,19 @@ Z_survey <- sparse.model.matrix(~0 + iso, basic_age)
 
 X_year <- model.matrix(~0 + year, basic_age)
 
+X_stand_in <- model.matrix(~1, basic_age)
 
 tmb_int <- list()
 
-observed_x <- matrix(basic_age$count, nrow = length(unique(basic_age$iso)), byrow = TRUE)
+observed_x <- matrix(basic_age$count, nrow = length(unique(basic_age$survey_id)), byrow = TRUE)
 
 tmb_int$data <- list(
   M_obs = M_obs,
   observed_x = observed_x,
+  X_stand_in
   
-  #age as a FE
-  X_year = X_year
+  #year as a FE
+  # X_year = X_year
 
   #age as a rw 
   # Z_age = Z_age,
@@ -214,10 +383,10 @@ tmb_int$data <- list(
   )
 
 tmb_int$par <- list(
-  beta_0 = 0,
+  beta_0 = 0#,
   
   
-  beta_year = rep(0, ncol(X_year))
+  # beta_year = rep(0, ncol(X_year))
   
   # u_age = rep(0, ncol(Z_age)),
   # log_prec_rw_age = 0
@@ -227,8 +396,8 @@ tmb_int$par <- list(
 )
 
 tmb_int$random <- c(                          # PUt everything here except hyperparamters
-  "beta_0",
-  "beta_year"
+  "beta_0"#,
+  #"beta_year"
   # "u_age"
   # "u_survey"
 )
