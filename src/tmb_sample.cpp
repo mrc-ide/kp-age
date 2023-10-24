@@ -26,6 +26,7 @@ Type objective_function<Type>::operator() ()
 
   DATA_SPARSE_MATRIX(M_obs);
   DATA_MATRIX(observed_x);
+  DATA_MATRIX(X_stand_in);
 
   int number_surveys = observed_x.rows(); // Number of rows (surveys)
   int number_age = observed_x.cols(); // Number of cols (age categories)
@@ -139,11 +140,11 @@ Type objective_function<Type>::operator() ()
   // vector<Type> eta3_v(eta3);
   // 
   
-  DATA_MATRIX(X_stand_in);
+ 
   /////////// Multinomial model --> Logit is our link 
 
 vector<Type> logit_p(
-                   beta_0  + X_stand_in                              // Parameter of length 1
+                   beta_0  * X_stand_in                              // Parameter of length 1
                    // + X_year * beta_year
                    // + Z_age * u_age * sqrt(1/prec_rw_age)
                    // + Z_period * u_period * sqrt(1/prec_rw_period)
@@ -187,6 +188,7 @@ vector<Type> logit_p(
   // 
   //   p_norm.row(i) = p_row_norm;
 
+  // return nll;
   }
 
   // vector<Type> single_row_of_probs;
@@ -204,7 +206,7 @@ vector<Type> logit_p(
 //   }
 
   // REPORT(p_norm);
-  REPORT(logit_p);
+  // REPORT(logit_p);
   
   //REPORT(p_pred)
 
