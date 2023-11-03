@@ -202,74 +202,83 @@ prediction_data4 %>%
   moz.utils::standard_theme()
 
 
-model5 <- multinom(age_group ~ 1 + iso*year, data = new_agedata)
+model5 <- multinom(cbind(age1, age2, age3, age4, age5) ~ 1 , data = counts)
 summary(model5)
 exp(coef(model5))
 
-predicted_probs5 <- predict(model5, newdata = new_agedata, type = "probs")
 
-predicted_probs5 <- data.frame(predicted_probs5) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+counts <- basic_age %>% 
+  select(age_group, survey_id, age_group, count, year) %>% 
+  pivot_wider(names_from = age_group, values_from = count, names_prefix = "age") 
 
-prediction_data5 <- basic_age %>% 
-  left_join(predicted_probs5 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
-                                                              age_group == "X2" ~ 2,
-                                                              age_group == "X3" ~ 3,
-                                                              age_group == "X4" ~ 4,
-                                                              age_group == "X5" ~ 5)))
+counts 
 
-prediction_data5 %>% 
-  ggplot(aes(x = age_group)) + 
-  geom_line(aes(y = prob)) + 
-  geom_point(aes(y = prop)) + 
-  facet_wrap(~country+year) +
-  moz.utils::standard_theme()
+predicted_probs5 <- predict(model5, newdata = counts, type = "probs")
 
-
-model6 <- multinom(age_group ~ 1 + survey_id, data = new_agedata)
-summary(model6)
-exp(coef(model6))
-
-predicted_probs6 <- predict(model6, newdata = new_agedata, type = "probs")
-
-predicted_probs6 <- data.frame(predicted_probs6) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year, survey_id)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
-
-prediction_data6 <- basic_age %>% 
-  left_join(predicted_probs6 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
-                                                              age_group == "X2" ~ 2,
-                                                              age_group == "X3" ~ 3,
-                                                              age_group == "X4" ~ 4,
-                                                              age_group == "X5" ~ 5)))
-
-prediction_data6 %>% 
-  ggplot(aes(x = age_group)) + 
-  geom_line(aes(y = prob)) + 
-  geom_point(aes(y = prop)) + 
-  facet_wrap(~country+year) +
-  moz.utils::standard_theme()
-
-
-
-model6 <- multinom(age_group ~ 1 + survey_id + year, data = new_agedata)
-summary(model6)
-exp(coef(model6))
-
-predicted_probs6 <- predict(model6, newdata = new_agedata, type = "probs")
-
-predicted_probs6 <- data.frame(predicted_probs6) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year, survey_id)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
-
-prediction_data6 <- basic_age %>% 
-  left_join(predicted_probs6 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
-                                                              age_group == "X2" ~ 2,
-                                                              age_group == "X3" ~ 3,
-                                                              age_group == "X4" ~ 4,
-                                                              age_group == "X5" ~ 5)))
-
-prediction_data6 %>% 
-  ggplot(aes(x = age_group)) + 
-  geom_line(aes(y = prob)) + 
-  geom_point(aes(y = prop)) + 
-  facet_wrap(~country+year) +
-  moz.utils::standard_theme()
+# predicted_probs5 <- data.frame(predicted_probs5) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+# 
+# prediction_data5 <- basic_age %>% 
+#   left_join(predicted_probs5 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+#                                                               age_group == "X2" ~ 2,
+#                                                               age_group == "X3" ~ 3,
+#                                                               age_group == "X4" ~ 4,
+#                                                               age_group == "X5" ~ 5)))
+# 
+# prediction_data5 %>% 
+#   ggplot(aes(x = age_group)) + 
+#   geom_line(aes(y = prob)) + 
+#   geom_point(aes(y = prop)) + 
+#   facet_wrap(~country+year) +
+#   moz.utils::standard_theme()
+# 
+# 
+# model6 <- multinom(age_group ~ 1 + survey_id, data = new_agedata)
+# summary(model6)
+# exp(coef(model6))
+# 
+# predicted_probs6 <- predict(model6, newdata = new_agedata, type = "probs")
+# 
+# predicted_probs6 <- data.frame(predicted_probs6) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year, survey_id)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+# 
+# prediction_data6 <- basic_age %>% 
+#   left_join(predicted_probs6 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+#                                                               age_group == "X2" ~ 2,
+#                                                               age_group == "X3" ~ 3,
+#                                                               age_group == "X4" ~ 4,
+#                                                               age_group == "X5" ~ 5)))
+# 
+# prediction_data6 %>% 
+#   ggplot(aes(x = age_group)) + 
+#   geom_line(aes(y = prob)) + 
+#   geom_point(aes(y = prop)) + 
+#   facet_wrap(~country+year) +
+#   moz.utils::standard_theme()
+# 
+# 
+# 
+# multinom(age_group )
+# 
+# model6 <- multinom(age_group ~ 1 + survey_id + year, data = new_agedata)
+# summary(model6)
+# exp(coef(model6))
+# 
+# predicted_probs6 <- predict(model6, newdata = new_agedata, type = "probs")
+# 
+# predicted_probs6 <- data.frame(predicted_probs6) %>% distinct() %>% rownames_to_column() %>% left_join(new_agedata %>% rownames_to_column() %>% select(rowname, country, year, survey_id)) %>% select(-rowname) %>% pivot_longer(cols = X1:X5, names_to = "age_group", values_to = "prob")
+# 
+# prediction_data6 <- basic_age %>% 
+#   left_join(predicted_probs6 %>% mutate(age_group = case_when(age_group == "X1" ~ 1,
+#                                                               age_group == "X2" ~ 2,
+#                                                               age_group == "X3" ~ 3,
+#                                                               age_group == "X4" ~ 4,
+#                                                               age_group == "X5" ~ 5)))
+# 
+# prediction_data6 %>% 
+#   ggplot(aes(x = age_group)) + 
+#   geom_line(aes(y = prob)) + 
+#   geom_point(aes(y = prop)) + 
+#   facet_wrap(~country+year) +
+#   moz.utils::standard_theme()
 
 
 
@@ -349,18 +358,24 @@ library(TMB)
 # new_agedata <- new_agedata %>% 
 #   left_join(mf_model)
 
-basic_age <- basic_age %>% 
+basic_age <- basic_age2 %>% 
+  filter(area == "Addis Ababa") %>% 
   mutate(idx = factor(row_number()),
          age_group = factor(age_group),
          year = factor(year))
 
 M_obs <- sparse.model.matrix(~0 + idx, basic_age)
 Z_age <- sparse.model.matrix(~0 + age_group, basic_age)
-Z_survey <- sparse.model.matrix(~0 + iso, basic_age)
+# Z_survey <- sparse.model.matrix(~0 + iso, basic_age)
 
-X_year <- model.matrix(~0 + year, basic_age)
+# X_year <- model.matrix(~0 + year, basic_age)
 
-X_stand_in <- model.matrix(~1, basic_age)
+X_age_group <- model.matrix(~0 + age_group, basic_age)
+
+X_stand_in <- sparse.model.matrix(~0 + age_group, basic_age)
+X_stand_in[,1] <- 0
+
+# X_stand_in <- model.matrix(~1, basic_age)
 
 tmb_int <- list()
 
@@ -371,6 +386,8 @@ tmb_int$data <- list(
   observed_x = observed_x,
   X_stand_in = X_stand_in
   
+  # age as a FE 
+  # X_age_group = X_age_group
   #year as a FE
   # X_year = X_year
 
@@ -383,7 +400,9 @@ tmb_int$data <- list(
   )
 
 tmb_int$par <- list(
-  beta_0 = 0#,
+  beta_0 = rep(0, ncol(X_stand_in))
+  
+  # beta_age = rep(0, ncol(X_age_group))
   
   
   # beta_year = rep(0, ncol(X_year))
@@ -396,7 +415,8 @@ tmb_int$par <- list(
 )
 
 tmb_int$random <- c(                          # PUt everything here except hyperparamters
-  "beta_0"#,
+  # "beta_0",
+  # "beta_age"
   #"beta_year"
   # "u_age"
   # "u_survey"
@@ -404,6 +424,7 @@ tmb_int$random <- c(                          # PUt everything here except hyper
 
 file.remove("src/tmb_sample.dll")
 file.remove("src/tmb_sample.o")
+file.remove("src/tmb_sample.so")
 
 
 TMB::compile("src/tmb_sample.cpp", flags = "-w")
@@ -443,11 +464,22 @@ sd_report <- fit$sdreport
 sd_report <- summary(sd_report, "all")
 sd_report
 
+c(0, 0.5280903, -0.3171204, -1.7408908, -1.8740775) %>% exp
+# [1] 1.0000000 1.6956910 0.7282431 0.1753641 0.1534965
+# Real ORs: 1   1.3929324 0.79578917 0.236208 0.2086729 
+# nnet:    1.   1.2580862 0.8472631. 0.29839. 0.2661504  - recovers the correct probs
 
+
+
+# TMB Doesn't perform so well when we use ETH, Adama data. 
+# c(0 , 8.3998734, -1.7693821, -0.9977373, -3.2756717) %>% exp
+# [1] 1.000000e+00 4.446504e+03 1.704383e-01 3.687128e-01 3.779148e-02
+# Real ORs: 1.      6.           0.3516.      0.698.       0.083. 
 
 class(fit) <- "naomi_fit"
 # debugonce(naomi::sample_tmb)
-fit <- naomi::sample_tmb(fit, random_only=TRUE)
+fit <- naomi::sample_tmb(fit, random_only=TRUE)  # Error in -r : invalid argument to unary operator
+
 int <- apply(fit$sample$logit_p, 1, quantile, c(0.025, 0.975))
 
 estimated_mf <- basic_age %>%

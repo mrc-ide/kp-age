@@ -22,18 +22,18 @@ Type objective_function<Type>::operator() ()
 
   Type nll = 0;
 
-  PARAMETER(beta_0);
+  PARAMETER_VECTOR(beta_0);
 
   DATA_SPARSE_MATRIX(M_obs);
   DATA_MATRIX(observed_x);
-  DATA_MATRIX(X_stand_in);
+  DATA_SPARSE_MATRIX(X_stand_in);
 
   int number_surveys = observed_x.rows(); // Number of rows (surveys)
   int number_age = observed_x.cols(); // Number of cols (age categories)
 
-  nll -= dnorm(beta_0, Type(0), Type(sqrt(1/0.001)), true);  //Prior for the intercept, v diffuse prior
+  nll -= dnorm(beta_0, Type(0), Type(sqrt(1/0.001)), true).sum();  //Prior for the intercept, v diffuse prior
 
-  
+  // vector<Type>beta0_center = beta_0 - beta_0[0];  //fixing age group 1 at 0. 
   /////////////////////
   
   // DATA_MATRIX(X_year);
@@ -41,6 +41,13 @@ Type objective_function<Type>::operator() ()
   // 
   // nll -= dnorm(beta_year, Type(0), Type(sqrt(1/0.001)), true).sum();
   
+  ////////////////////
+  
+  // DATA_MATRIX(X_age_group);
+  // PARAMETER_VECTOR(beta_age);
+  // 
+  // nll -= dnorm(beta_age, Type(0), Type(sqrt(1/0.001)), true).sum();
+
   
   ///////////////////
   
@@ -144,7 +151,8 @@ Type objective_function<Type>::operator() ()
   /////////// Multinomial model --> Logit is our link 
 
 vector<Type> logit_p(
-                   beta_0  * X_stand_in                              // Parameter of length 1
+                   X_stand_in  * beta_0  // Parameter of length 1
+                    // + X_age_group * beta_age
                    // + X_year * beta_year
                    // + Z_age * u_age * sqrt(1/prec_rw_age)
                    // + Z_period * u_period * sqrt(1/prec_rw_period)
@@ -167,28 +175,27 @@ vector<Type> logit_p(
   // 
   // vector<Type> p(invlogit(p_pred));  //ip dealised set of P
 
-  // vector<Type> p(invlogit(logit_p));
-  // 
-  // array<Type> p_arr(number_surveys,number_age);
-  // 
-  // for(int i=0; i<number_surveys; i++) {
-  //   for(int j=0; j<number_age; j++) {
-  //     p_arr(i,j) = p((i*number_age) + j);
-  //   }
-  // }
-  // 
-  // matrix<Type> p_norm(number_surveys, number_age);
-  // 
-  // for (int i=0; i<number_surveys; i++) {
-  //   vector<Type> p_row(p_arr.matrix().row(i));   //p_row is composed of the i'th row of p_arr
-  //   vector<Type> p_row_norm(p_row/p_row.sum());  // we normalise it
-  //   vector<Type> x_row(observed_x.row(i));       //i_th row of the data
-  // 
-  //   nll -= dmultinom(x_row, p_row_norm, true);
-  // 
-  //   p_norm.row(i) = p_row_norm;
+  vector<Type> p(invlogit(logit_p));
+  //
+  array<Type> p_arr(number_surveys,number_age);
+  //
+  for(int i=0; i<number_surveys; i++) {
+    for(int j=0; j<number_age; j++) {
+      p_arr(i,j) = p((i*number_age) + j);
+    }
+  }
 
-  // return nll;
+  matrix<Type> p_norm(number_surveys, number_age);
+
+  for (int i=0; i<number_surveys; i++) {
+    vector<Type> p_row(p_arr.matrix().row(i));   //p_row is composed of the i'th row of p_arr
+    vector<Type> p_row_norm(p_row/p_row.sum());  // we normalise it
+    vector<Type> x_row(observed_x.row(i));       //i_th row of the data
+
+    nll -= dmultinom(x_row, p_row_norm, true);
+
+    p_norm.row(i) = p_row_norm;
+
   }
 
   // vector<Type> single_row_of_probs;
@@ -206,8 +213,8 @@ vector<Type> logit_p(
 //   }
 
   // REPORT(p_norm);
-  // REPORT(logit_p);
-  
+  REPORT(logit_p);
+
   //REPORT(p_pred)
 
   return nll;
