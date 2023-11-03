@@ -374,7 +374,7 @@ X_age_group <- model.matrix(~0 + age_group, basic_age)
 
 X_stand_in <- sparse.model.matrix(~0 + age_group, basic_age)
 X_stand_in[,1] <- 0
-
+X_stand_in <- sparse.model.matrix(~0 + age_group, basic_age)
 # X_stand_in <- model.matrix(~1, basic_age)
 
 tmb_int <- list()
@@ -384,7 +384,7 @@ observed_x <- matrix(basic_age$count, nrow = length(unique(basic_age$survey_id))
 tmb_int$data <- list(
   M_obs = M_obs,
   observed_x = observed_x,
-  X_stand_in = X_stand_in
+  X_stand_in = X_stand_in[c(2:5)]
   
   # age as a FE 
   # X_age_group = X_age_group
@@ -464,15 +464,15 @@ sd_report <- fit$sdreport
 sd_report <- summary(sd_report, "all")
 sd_report
 
-c(0, 0.5280903, -0.3171204, -1.7408908, -1.8740775) %>% exp
-# [1] 1.0000000 1.6956910 0.7282431 0.1753641 0.1534965
-# Real ORs: 1   1.3929324 0.79578917 0.236208 0.2086729 
+c(0, 0.5280903, -0.3171204, -1.7408908, -1.8740775) %>% plogis
+# TMB [1] 1.0000000 1.6956910 0.7282431 0.1753641 0.1534965 TMB 
+
 # nnet:    1.   1.2580862 0.8472631. 0.29839. 0.2661504  - recovers the correct probs
 
-
+basic_age %>% mutate(newodds = prop/prop[age_group == 1], newOR = newodds/newodds[age_group == 1]) %>% select(newOR, everything())  #nnet odds
 
 # TMB Doesn't perform so well when we use ETH, Adama data. 
-# c(0 , 8.3998734, -1.7693821, -0.9977373, -3.2756717) %>% exp
+c(0 , 8.3998734, -1.7693821, -0.9977373, -3.2756717) %>% plogis
 # [1] 1.000000e+00 4.446504e+03 1.704383e-01 3.687128e-01 3.779148e-02
 # Real ORs: 1.      6.           0.3516.      0.698.       0.083. 
 
