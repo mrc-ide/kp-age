@@ -36,6 +36,21 @@ Type objective_function<Type>::operator() ()
   // vector<Type>beta0_center = beta_0 - beta_0[0];  //fixing age group 1 at 0. 
   /////////////////////
   
+  // Country Level iid ///
+  
+  DATA_SPARSE_MATRIX(Z_spatial);
+  DATA_SPARSE_MATRIX(R_spatial);
+  // PARAMETER(log_prec_spatial);
+  // PARAMETER_VECTOR(u_spatial);
+  // 
+  // Type prec_spatial = exp(log_prec_spatial);
+  // nll -= dgamma(prec_spatial, Type(1), Type(2000), true);
+  // 
+  // nll -= Type(-0.5) * (u_spatial * (R_spatial * u_spatial)).sum();
+  // nll -= dnorm(u_spatial.sum(), Type(0), Type(0.01) * u_spatial.size(), true);         //Sum to zero constraint on u_age (putting a prior on all the age groups to sum to zero with some small standard deviation)
+
+  ////////////////////
+  
   // DATA_MATRIX(X_year);
   // PARAMETER_VECTOR(beta_year);
   // 
@@ -147,11 +162,45 @@ Type objective_function<Type>::operator() ()
   // vector<Type> eta3_v(eta3);
   // 
   
+  
+  
+  // /////////// SURVEY AGE INTERACTION
+
+  DATA_SPARSE_MATRIX(Z_survage);
+  DATA_SPARSE_MATRIX(R_survey);
+
+  PARAMETER_ARRAY(eta3);
+  PARAMETER(log_prec_eta3);
+  PARAMETER(logit_eta3_phi_age);
+
+
+  Type prec_eta3 = exp(log_prec_eta3);
+  nll -= dgamma(prec_eta3, Type(1), Type(2000), true);
+
+  // nll -= dnorm(logit_eta3_phi_age, Type(3.66116349), Type(0.09653723), true);
+
+  Type eta3_phi_age(exp(logit_eta3_phi_age)/(1+exp(logit_eta3_phi_age)));
+  nll -= log(eta3_phi_age) +  log(1 - eta3_phi_age); // Jacobian adjustment for inverse logit'ing the parameter...
+  nll -= dbeta(eta3_phi_age, Type(0.5), Type(0.5), true);
+
+  nll += SEPARABLE(AR1(Type(eta3_phi_age)), GMRF(R_survey))(eta3);
+
+  // Type log_det_Qar1_eta3((eta3.cols() - 1) * log(1 - eta3_phi_age * eta3_phi_age));
+  // nll -= R_spatial * 0.5 * (log_det_Qar1_eta3 - log(2 * PI));
+
+  for (int i = 0; i < eta3.cols(); i++) {
+    nll -= dnorm(eta3.col(i).sum(), Type(0), Type(0.01) * eta3.col(i).size(), true);}
+
+  vector<Type> eta3_v(eta3);
+
  
   /////////// Multinomial model --> Logit is our link 
 
 vector<Type> logit_p(
-                   X_stand_in  * beta_0  // Parameter of length 1
+                   X_stand_in  * beta_0 
+                  
+                   // beta_0
+                   // + Z_spatial * u_spatial * sqrt(1/prec_spatial)
                     // + X_age_group * beta_age
                    // + X_year * beta_year
                    // + Z_age * u_age * sqrt(1/prec_rw_age)
@@ -165,17 +214,18 @@ vector<Type> logit_p(
                    // + Z_omega2 * omega2_v * sqrt(1/prec_omega2)
                    // + Z_interaction1 * eta1_v * sqrt(1/prec_eta1)
                    // + Z_interaction2 * eta2_v * sqrt(1/prec_eta2)
-                   // + Z_interaction3 * eta3_v * sqrt(1/prec_eta3)
+                   + Z_survage * eta3_v * sqrt(1/prec_eta3)
                    );
 
-  // vector<Type> p_pred((M_obs * logit_p)   //beta_0) 
+  // vector<Type> p_pred((M_obs * logit_p)   //beta_0)
   //                     + Z_survey * u_survey * sqrt(1/prec_survey)
   //                     // + X_method * beta_method
   //                         );           //get me the perfect p_vector and get me the ones that relate to the data --> which comes from M_obs
-  // 
+  //
   // vector<Type> p(invlogit(p_pred));  //ip dealised set of P
 
-  vector<Type> p(invlogit(logit_p));
+  // vector<Type> p(invlogit(logit_p));
+  vector<Type> p(exp(logit_p));
   //
   array<Type> p_arr(number_surveys,number_age);
   //
@@ -197,6 +247,8 @@ vector<Type> logit_p(
     p_norm.row(i) = p_row_norm;
 
   }
+  
+  
 
   // vector<Type> single_row_of_probs;
   // single_row_of_probs = p_norm.row(1);
@@ -212,7 +264,7 @@ vector<Type> logit_p(
 //     }
 //   }
 
-  // REPORT(p_norm);
+  REPORT(p_norm);
   REPORT(logit_p);
 
   //REPORT(p_pred)
