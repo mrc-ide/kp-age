@@ -18,16 +18,21 @@ geographies <- read_sf(moz.utils::national_areas()) %>%
   )
 
 spec_paths <- c(
-  list.files("~/Imperial College London/HIV Inference Group - WP - Documents/Data/Spectrum files/2023 final shared/SSA", pattern = "PJNZ", ignore.case = TRUE, full.names = TRUE)
+  list.files("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/Spectrum files/2023 final shared/SSA", pattern = "PJNZ", ignore.case = TRUE, full.names = TRUE)
   # list.files("~/Imperial College London/HIV Inference Group - WP - Documents/Data/Spectrum files/2021 final shared/WCA", pattern = "PJNZ", ignore.case = TRUE, full.names = TRUE),
   # list.files("~/Imperial College London/HIV Inference Group - WP - Documents/Data/Spectrum files/2021 final shared/WCA/Nigeria state may 15", pattern = "PJNZ", ignore.case = TRUE, full.names = TRUE)
 )
 
+debugonce(naomi:::extract_pjnz_one)
+lapply(spec_paths, naomi::extract_pjnz_naomi)
+
 spectrum_data <- lapply(spec_paths, naomi::extract_pjnz_naomi)
 
-
-spectrum_data <- map_df(spectrum_data, bind_rows) %>% 
-  filter(sex == "female") %>% 
+spectrum_data <- readRDS("C:/Users/rla121/Downloads/specdata_f.rds") %>% 
+# spectrum_data <- map_df(spectrum_data, bind_rows) %>% 
+  filter(sex == "female",
+         !age < 15,
+         !age > 49) %>% 
   filter(!year<1993) %>% 
   select(iso3, spectrum_region_name, year, age, totpop) %>% 
   group_by(year, age, iso3) %>% 
@@ -36,8 +41,10 @@ spectrum_data <- map_df(spectrum_data, bind_rows) %>%
   select(-spectrum_region_name) %>% 
   distinct() %>% 
   group_by(iso3, year) %>% 
-  mutate(tpa = totpop/sum(totpop)) %>% 
-  ungroup()
+  mutate(tpa = totpop/sum(totpop),
+         sum = sum(tpa)) %>% 
+  ungroup() 
+  
   
 
 # nb <- INLA::inla.read.graph(moz.utils::national_adj())
@@ -118,16 +125,18 @@ dat <- dat %>%
   summarise(estimate = sum(estimate)) %>% 
   ungroup()
 
-spectrum_data_grouped <- spectrum_data %>% filter(!age<15, !age>49) %>% 
+spectrum_data_grouped <- spectrum_data %>% 
   group_by(year, iso3) %>% 
   mutate(age_group = naomi::cut_naomi_age_group(age))  %>% 
   ungroup() %>% 
   group_by(year, iso3, age_group) %>% 
-  mutate(tpa = sum(tpa)) %>% 
+  mutate(tpa_sum = sum(tpa)) %>% 
   ungroup() %>% 
-  select(-age, -totpop) %>% 
+  select(-age, -totpop, -tpa) %>% 
   distinct() %>% 
-  mutate(id.age =  (to_int(age_group)))
+  mutate(id.age =  (to_int(age_group))) %>% 
+  group_by(iso3, year) %>% 
+  mutate(sum = sum(tpa_sum))
                                                           ## `mf_model` --> indices we're going to predict at  - similar to blank rows in INLA - this is what we want to get out
 mf_model <- crossing(
   iso3 = iso3,
