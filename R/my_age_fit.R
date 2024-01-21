@@ -31,15 +31,12 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
          age %in% 15:49) %>%
   type.convert(as.is = T) %>%
   filter(!is.na(age)) %>%
-  select(iso3, survey_id, year, age, n)
-# group_by(kp, iso3, year, survey_id) %>%
-# # mutate(estimate = estimate/sum(estimate))  %>% ## What is this doing? sum(estimate) here should be 1. In fact: what is the estimate column - on second look it's not the age%!
-# ungroup()
-
-dat <- dat %>%
-  single_year_to_five_year(T) %>%
+  select(iso3, survey_id, year, age, n) %>% 
+  # single_year_to_five_year(T) %>%
+  mutate(age_group = factor(age)) %>% 
   group_by(iso3, survey_id, year, age_group) %>%
-  summarise(n = sum(n))
+  summarise(n = sum(n)) %>% 
+  ungroup()
 
 ## What is this bit doing?
 # dat <- dat %>%
@@ -73,7 +70,11 @@ dat <- dat %>%
 #   distinct() %>%
 #   mutate(id.age =  (to_int(age_group)))
 
-spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds")
+# For age_groups
+# spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds")
+
+# For single year age
+spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds")
 # spec_paths <- list.files("~/Imperial College London/HIV Inference Group - WP - Documents/Data/Spectrum files/2023 final shared/SSA", full.names = T)
 # 
 # spectrum_data <- lapply(spec_paths, naomi::extract_pjnz_naomi)
@@ -86,14 +87,17 @@ spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds")
 #   filter(age %in% 15:49,
 #          year > 1992,
 #          sex == "female") %>%
-#   single_year_to_five_year(T) %>%
+#   # single_year_to_five_year(T) %>%
+#   mutate(age_group = age) %>% 
 #   group_by(iso3, sex, year, age_group) %>%
 #   summarise(totpop = sum(totpop)) %>%
 #   group_by(iso3, sex, year) %>%
 #   mutate(tpa = totpop/sum(totpop)) %>%
-#   select(-totpop)
-
-# saveRDS(spectrum_data_f, "~/Downloads/spectrum_data_f.rds")
+#   select(-totpop) %>% 
+#   ungroup()
+# 
+# # saveRDS(spectrum_data_f, "~/Downloads/spectrum_data_f.rds")
+# saveRDS(spectrum_data_f, "~/Downloads/spectrum_data_f_il.rds")
 
 # spectrum_data_m <- spectrum_data %>%
 #   bind_rows() %>%
@@ -111,15 +115,16 @@ spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds")
 
 mf_model <- spectrum_data_f %>%
   ungroup() %>%
-  mutate(id.age =  factor(to_int(age_group)),
+  mutate(age_group = factor(age_group),
+         id.age =  factor(to_int(age_group)),
          # id.iso3 = factor(as.numeric(factor(iso3))),            
          idx = factor(row_number()),
          id.year = as.numeric(factor(year))-1) %>% 
-  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
+  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) 
   # filter(!iso3== "NGA") %>% 
-  mutate(is15 = ifelse(age_group == "Y015_019", 1, 0))
+  # mutate(is15 = ifelse(age_group == "Y015_019", 1, 0))
 
-## What is this for?
+
 # dat <- crossing(id.age = 1:7,
 #                 select(dat, iso3, survey_id, id.method, year)) %>%
 #   left_join(spectrum_data_grouped) %>% 
@@ -155,9 +160,19 @@ Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
 
 X_stand_in <- sparse.model.matrix(~0 + age_group, mf_model)
-# X_stand_in <- X_stand_in[,c(2:7)] 
+# X_stand_in <- X_stand_in[,c(2:7)]
 
-Z_age <- sparse.model.matrix(~0 + age_group, mf_model)
+##### No splines
+# Z_age <- sparse.model.matrix(~0 + age_group, mf_model)
+
+##### Yes splines
+Z_age <- sparse.model.matrix(~0 + age_group, mf_model)     ##n observations long (this time from mf_model), n cols by age group
+x <- 0:34
+k <- seq(-15, 50, by = 5)
+spline_mat <- splines::splineDesign(k, x, ord = 4)
+spline_mat <- as(spline_mat, "sparseMatrix")
+Z_age <- Z_age %*% spline_mat
+
 
 Z_spaceage <-  mgcv::tensor.prod.model.matrix(list(Z_spatial, Z_age))
 
@@ -186,7 +201,6 @@ tmb_int$data <- list(
   observed_x = observed_x,
   X_stand_in = X_stand_in,
   R_beta = dfertility::make_rw_structure_matrix(ncol(X_stand_in), 1, adjust_diagonal = TRUE),  ##captures relationship between age
-  
   
   logit_totpop = logit_totpop,
   
@@ -276,35 +290,39 @@ class(fit) <- "naomi_fit"
 fit <- naomi::sample_tmb(fit, random_only=TRUE)
 int <- apply(fit$sample$p_norm, 1, quantile, c(0.025, 0.975))
 
-estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = 7, ncol = 63, byrow = T)) %>% 
+
+
+estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>% 
   rownames_to_column() %>% 
   rename(age_group = rowname) %>% 
   type.convert(as.is = T) %>% 
-  pivot_longer(cols = X1:X63, names_to = "survey", values_to = "mean") %>% 
+  pivot_longer(cols = starts_with("X"), names_to = "survey", values_to = "mean") %>% 
   left_join(
     data.frame(matrix(unique(dat$survey_id), nrow = 1)) %>% 
-      pivot_longer(cols = X1:X63, names_to = "survey", values_to = "survey_id")) %>% 
+      pivot_longer(cols = starts_with("X"), names_to = "survey", values_to = "survey_id")) %>% 
   # data.frame(matrix(basic_age$survey_id, nrow = 7, ncol = 65, byrow = F)) %>% 
   #   pivot_longer(everything(), names_to = "survey", values_to = "survey_id") %>% 
   # distinct()) %>% 
   left_join(
-    data.frame(matrix(int[1,], nrow = 7, ncol = 63, byrow = T)) %>% 
+    data.frame(matrix(int[1,], nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>% 
       rownames_to_column() %>% 
       rename(age_group = rowname) %>% 
       type.convert(as.is = T) %>% 
-      pivot_longer(cols = X1:X63, names_to = "survey", values_to = "lower") %>% 
+      pivot_longer(cols = starts_with("X"), names_to = "survey", values_to = "lower") %>% 
       left_join(
         data.frame(matrix(unique(dat$survey_id), nrow = 1)) %>% 
-          pivot_longer(cols = X1:X63, names_to = "survey", values_to = "survey_id"))) %>% 
+          pivot_longer(cols = starts_with("X"), names_to = "survey", values_to = "survey_id"))) %>% 
   left_join(
-    data.frame(matrix(int[2,], nrow = 7, ncol = 63, byrow = T)) %>% 
+    data.frame(matrix(int[2,], nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>% 
       rownames_to_column() %>% 
       rename(age_group = rowname) %>% 
       type.convert(as.is = T) %>% 
-      pivot_longer(cols = X1:X63, names_to = "survey", values_to = "upper") %>% 
+      pivot_longer(cols = starts_with("X"), names_to = "survey", values_to = "upper") %>% 
       left_join(
         data.frame(matrix(unique(dat$survey_id), nrow = 1)) %>% 
-          pivot_longer(cols = X1:X63, names_to = "survey", values_to = "survey_id")))
+          pivot_longer(cols = starts_with("X"), names_to = "survey", values_to = "survey_id"))) %>% 
+  separate_survey_id()
+  
 
 
 dat2 <- dat %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>% mutate(id.age = as.numeric(id.age)) 
@@ -312,10 +330,15 @@ dat2 <- dat %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>% 
 
 estimated_mf %>%
   ggplot() + 
-  geom_line(aes(x = age_group, y = mean)) + 
-  geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper)) +
-  geom_point(data = (dat2 %>% mutate(age = as.integer(id.age))), aes(x = age, y = pa, color = survey_id), show.legend = F) +
-  facet_wrap(~survey_id)
+  geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper), alpha = 1, fill = "grey") +
+  geom_line(aes(x = age_group, y = mean, color = survey_id), show.legend = F) + 
+  geom_point(data = (dat2 %>% mutate(age = as.integer(id.age))), aes(x = age, y = pa, color = survey_id), show.legend = F, size = 1) +
+  facet_wrap(~iso3) +
+  # moz.utils::standard_theme() 
+  theme(panel.background = element_rect(fill = NA))
+  # moz.utils::standard_theme() + 
+  # theme(plot.tag = element_text(size = 12),
+  #       plot.title = element_text(size = 12))
 
 setwd("~/Documents/Github/kp-age")
 # library(tidyverse)
