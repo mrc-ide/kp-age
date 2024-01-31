@@ -32,8 +32,8 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
   type.convert(as.is = T) %>%
   filter(!is.na(age)) %>%
   select(iso3, survey_id, year, age, n) %>% 
-  # single_year_to_five_year(T) %>%
-  mutate(age_group = factor(age)) %>% 
+  single_year_to_five_year(T) %>%
+  mutate(age_group = factor(age_group)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
   group_by(iso3, survey_id, year, age_group) %>%
   summarise(n = sum(n)) %>% 
   ungroup()
@@ -71,7 +71,7 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
 #   mutate(id.age =  (to_int(age_group)))
 
 # For age_groups
-# spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds")
+spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds")
 
 # For single year age
 spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds")
@@ -160,10 +160,11 @@ Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
 
 X_stand_in <- sparse.model.matrix(~0 + age_group, mf_model)
+
 # X_stand_in <- X_stand_in[,c(2:7)]
 
 ##### No splines
-# Z_age <- sparse.model.matrix(~0 + age_group, mf_model)
+Z_age <- sparse.model.matrix(~0 + age_group, mf_model)
 
 ##### Yes splines
 Z_age <- sparse.model.matrix(~0 + age_group, mf_model)     ##n observations long (this time from mf_model), n cols by age group
@@ -172,7 +173,7 @@ k <- seq(-15, 50, by = 5)
 spline_mat <- splines::splineDesign(k, x, ord = 4)
 spline_mat <- as(spline_mat, "sparseMatrix")
 Z_age <- Z_age %*% spline_mat
-
+X_stand_in <- X_stand_in %*% spline_mat
 
 Z_spaceage <-  mgcv::tensor.prod.model.matrix(list(Z_spatial, Z_age))
 
@@ -222,7 +223,7 @@ tmb_int$par <- list(
   eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
   log_prec_eta3 = 0,
   logit_eta3_phi_age = 0,
-  logit_eta3_phi_age = 0,
+  # lag_logit_eta3_phi_age = 0
   logit_eta2_phi_age = 0,
   eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
   log_prec_eta2 = 0,
@@ -237,7 +238,7 @@ tmb_int$random <- c(
   
 )
 
-
+# setwd("~/Documents/Github/kp-age")
 
 tmb_unload <- function(name) {   
   ldll <- getLoadedDLLs()   
@@ -252,6 +253,7 @@ tmb_unload("tmb")
 TMB::compile("src/tmb.cpp", flags = "-w")
 
 dyn.load(dynlib("src/tmb"))
+
 
 
 f <- parallel::mcparallel({TMB::MakeADFun(data = tmb_int$data,
@@ -292,7 +294,7 @@ int <- apply(fit$sample$p_norm, 1, quantile, c(0.025, 0.975))
 
 
 
-estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>% 
+estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
   rownames_to_column() %>% 
   rename(age_group = rowname) %>% 
   type.convert(as.is = T) %>% 
@@ -330,12 +332,13 @@ dat2 <- dat %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>% 
 
 estimated_mf %>%
   ggplot() + 
-  geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper), alpha = 1, fill = "grey") +
-  geom_line(aes(x = age_group, y = mean, color = survey_id), show.legend = F) + 
-  geom_point(data = (dat2 %>% mutate(age = as.integer(id.age))), aes(x = age, y = pa, color = survey_id), show.legend = F, size = 1) +
-  facet_wrap(~iso3) +
+  geom_point(data = (dat2 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = survey_id), show.legend = F, size = 1) +
+  geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper), alpha = 0.75, fill = "grey") +
+  geom_line(aes(x = age_group, y = mean), show.legend = F) +
+  facet_wrap(~survey_id) +
   # moz.utils::standard_theme() 
-  theme(panel.background = element_rect(fill = NA))
+  theme(panel.background = element_rect(fill = NA)) +
+  labs(y = "Proportion of sex-workers per age group")
   # moz.utils::standard_theme() + 
   # theme(plot.tag = element_text(size = 12),
   #       plot.title = element_text(size = 12))
