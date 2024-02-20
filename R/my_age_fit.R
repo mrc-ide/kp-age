@@ -38,7 +38,15 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
   summarise(n = sum(n)) %>% 
   ungroup()
 
-## What is this bit doing?
+dat <- crossing(age_group = dat$age_group,
+                select(dat, iso3, survey_id, year)) %>%
+  arrange(survey_id) %>%
+  # filter(!survey_id %in% c("ZAF1998ACA_FSW")) %>%
+  filter(!survey_id %in% c("ZAF1998ACA_FSW", "ETH2020ACA_FSW")) %>%
+  left_join(dat)
+
+
+
 # dat <- dat %>%
 #   select(iso3, survey_id, year, age, estimate, method) %>%
 #   group_by(iso3, survey_id, age, method, year) %>%
@@ -71,7 +79,8 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
 #   mutate(id.age =  (to_int(age_group)))
 
 # For age_groups
-spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds")
+spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds") %>% 
+  filter(year %in% c(1993:2023))
 
 # For single year age
 spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds")
@@ -120,7 +129,18 @@ mf_model <- spectrum_data_f %>%
          # id.iso3 = factor(as.numeric(factor(iso3))),            
          idx = factor(row_number()),
          id.year = as.numeric(factor(year))-1) %>% 
-  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) 
+  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
+  # select(tpa) %>% 
+  filter(year %in% c(1993:2023)) 
+
+# New mf_model below
+mf_model2 <- crossing(iso3 = ssa_iso3(),
+                     age_group = unique(spectrum_data_f$age_group)) %>%
+  mutate(age_group = factor(age_group),
+         id.age =  factor(to_int(age_group)),
+         # id.iso3 = factor(as.numeric(factor(iso3))),            
+         idx = factor(row_number())) %>% 
+  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id) %>% st_drop_geometry() %>% mutate(id.iso3 = factor(row_number()))) 
   # filter(!iso3== "NGA") %>% 
   # mutate(is15 = ifelse(age_group == "Y015_019", 1, 0))
 
@@ -133,29 +153,15 @@ mf_model <- spectrum_data_f %>%
 #   arrange(survey_id, id.age) %>% 
 #   mutate(id.age = factor(id.age))
 
-dat <- dat %>%
+dat2 <- dat %>%
   left_join(mf_model)
 
-crossing(age_group = dat$age_group,
-         select(dat, iso3, survey_id, year)) %>%
-  arrange(survey_id) %>%
-  left_join(dat) %>%
-  filter(is.na(n))
 
-## Please check the ZAF1998ACA_FSW recoding: apparently it has 1 FSW in it who is age 20... Dropping that survey for now
-dat <- crossing(age_group = dat$age_group,
-                select(dat, iso3, survey_id, year)) %>%
-  arrange(survey_id) %>%
-  # filter(!survey_id %in% c("ZAF1998ACA_FSW")) %>%
-  filter(!survey_id %in% c("ZAF1998ACA_FSW", "ETH2020ACA_FSW")) %>%
-  left_join(dat)
 
-# dat <- dat %>% 
-#   filter(!iso3 == "NGA")
+dat2$n[is.na(dat2$n)] <- 0
 
-dat$n[is.na(dat$n)] <- 0
-
-M_obs <- sparse.model.matrix(~0 + idx, dat)   
+# How does M_obs know the size of mf_model? 
+M_obs <- sparse.model.matrix(~0 + idx, dat2)   
 Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
 
@@ -190,10 +196,14 @@ dim(X_stand_in)
 
 
 
-observed_x <- matrix(dat$n, nrow = length(unique(dat$survey_id)), byrow = TRUE)
+observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE)
 
+# Is it fine that observed totpop is a different length to observed_x? Yes right? 
 observed_totpop <- matrix(mf_model$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
 logit_totpop <- qlogis(observed_totpop)
+
+# If we want to remove logit_totpop this produces a matrix of 0
+logit_totpop <- matrix(rep(0, 8463), ncol = length(unique(mf_model$age_group)), byrow = T)
 
 tmb_int <- list()
 
@@ -209,32 +219,35 @@ tmb_int$data <- list(
   Z_spatial = Z_spatial,
   R_spatial = as(diag(1, nrow = length(unique(mf_model$id.iso3))), "dgCMatrix"),
   Z_spaceage = Z_spaceage,
-  Z_period = Z_period,
-  R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
-  Z_periodage = Z_periodage,
+  # Z_period = Z_period,
+  # R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
+  # Z_periodage = Z_periodage,
   R_spatial2 = dfertility::make_adjacency_matrix(read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% st_make_valid(), 0)
 )
 
 
 tmb_int$par <- list( 
   beta_0 = rep(0, ncol(X_stand_in)),
+  
   log_prec_rw_beta = 0,
   lag_logit_phi_beta = 0,
+  
   eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
   log_prec_eta3 = 0,
-  logit_eta3_phi_age = 0,
+  logit_eta3_phi_age = 0
   # lag_logit_eta3_phi_age = 0
-  logit_eta2_phi_age = 0,
-  eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
-  log_prec_eta2 = 0,
-  logit_eta2_phi_period = 0
+  
+  # logit_eta2_phi_age = 0,
+  # eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
+  # log_prec_eta2 = 0,
+  # logit_eta2_phi_period = 0
   
 )
 
 tmb_int$random <- c(                          
   "beta_0",
-  "eta3",
-  "eta2"
+  "eta3"
+  # "eta2"
   
 )
 
@@ -248,17 +261,20 @@ tmb_unload <- function(name) {
   cat('Unload ', length(idx), "loaded versions.\n") 
 }
 
-tmb_unload("tmb")
 
-TMB::compile("src/tmb.cpp", flags = "-w")
+tmb_unload("flib")
 
-dyn.load(dynlib("src/tmb"))
+lapply(list.files("src/", pattern = "\\.o|\\.so", full.names = T), file.remove)
+
+TMB::compile("src/flib.cpp", flags = "-w")
+
+dyn.load(dynlib("src/flib"))
 
 
 
 f <- parallel::mcparallel({TMB::MakeADFun(data = tmb_int$data,
                                           parameters = tmb_int$par,
-                                          DLL = "tmb",
+                                          DLL = "flib",
                                           silent=0,
                                           checkParameterOrder=FALSE)
 })
@@ -269,10 +285,9 @@ if(is.null(parallel::mccollect(f)[[1]])) {
 }
 
 
-
 obj <-  TMB::MakeADFun(data = tmb_int$data,
                        parameters = tmb_int$par,
-                       DLL = "tmb",
+                       DLL = "flib",
                        random = tmb_int$random,
                        hessian = FALSE)
 
@@ -327,12 +342,12 @@ estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(uni
   
 
 
-dat2 <- dat %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>% mutate(id.age = as.numeric(id.age)) 
+dat3 <- dat2 %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>% mutate(id.age = as.numeric(id.age)) 
 
 
 estimated_mf %>%
   ggplot() + 
-  geom_point(data = (dat2 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = survey_id), show.legend = F, size = 1) +
+  geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = survey_id), show.legend = F, size = 1) +
   geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper), alpha = 0.75, fill = "grey") +
   geom_line(aes(x = age_group, y = mean), show.legend = F) +
   facet_wrap(~survey_id) +
