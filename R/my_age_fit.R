@@ -32,11 +32,12 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
   type.convert(as.is = T) %>%
   filter(!is.na(age)) %>%
   select(iso3, survey_id, year, age, n) %>% 
-  single_year_to_five_year(T) %>%
-  mutate(age_group = factor(age_group)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
+  # single_year_to_five_year(T) %>%
+  mutate(age_group = factor(age)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
   group_by(iso3, survey_id, year, age_group) %>%
   summarise(n = sum(n)) %>% 
-  ungroup()
+  ungroup() %>% 
+  mutate(year = factor(year))
 
 dat <- crossing(age_group = dat$age_group,
                 select(dat, iso3, survey_id, year)) %>%
@@ -123,15 +124,17 @@ spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds")
 # spectrum_data_grouped <- readRDS("~/Downloads/specgrouped.rds")
 
 mf_model <- spectrum_data_f %>%
+  distinct(age_group, iso3) %>% 
   ungroup() %>%
   mutate(age_group = factor(age_group),
          id.age =  factor(to_int(age_group)),
          # id.iso3 = factor(as.numeric(factor(iso3))),            
-         idx = factor(row_number()),
-         id.year = as.numeric(factor(year))-1) %>% 
-  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
+         idx = factor(row_number())) %>% 
+         # id.year = as.numeric(factor(year))-1) %>% 
+  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) 
+  # type.convert(as.is = T) %>% 
   # select(tpa) %>% 
-  filter(year %in% c(1993:2023)) 
+  # filter(year %in% c(1993:2023)) 
 
 # New mf_model below
 mf_model2 <- crossing(iso3 = ssa_iso3(),
@@ -154,9 +157,22 @@ mf_model2 <- crossing(iso3 = ssa_iso3(),
 #   mutate(id.age = factor(id.age))
 
 dat2 <- dat %>%
-  left_join(mf_model)
+  left_join(mf_model) 
 
 
+dat2 <- dat2 %>% 
+  group_by(survey_id) %>% 
+  mutate(pa = n/sum(n)) 
+  
+
+sd(dat2$tpa)
+sd(dat2$pa)
+
+dat2 %>% 
+  left_join(moz.utils::region()) %>% 
+ggplot() + 
+  geom_point(aes(x = tpa, y = pa, color = region)) +
+  ggpmisc::stat_poly_eq(aes(x = tpa, y = pa))
 
 dat2$n[is.na(dat2$n)] <- 0
 
@@ -203,7 +219,7 @@ observed_totpop <- matrix(mf_model$tpa, ncol = length(unique(mf_model$age_group)
 logit_totpop <- qlogis(observed_totpop)
 
 # If we want to remove logit_totpop this produces a matrix of 0
-logit_totpop <- matrix(rep(0, 8463), ncol = length(unique(mf_model$age_group)), byrow = T)
+logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
 
 tmb_int <- list()
 
@@ -350,7 +366,7 @@ estimated_mf %>%
   geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = survey_id), show.legend = F, size = 1) +
   geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper), alpha = 0.75, fill = "grey") +
   geom_line(aes(x = age_group, y = mean), show.legend = F) +
-  facet_wrap(~survey_id) +
+  facet_wrap(~iso3) +
   # moz.utils::standard_theme() 
   theme(panel.background = element_rect(fill = NA)) +
   labs(y = "Proportion of sex-workers per age group")
