@@ -27,13 +27,13 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
   mutate(method = ifelse(is.na(lower), "convenience", "RDS")) %>%
   rename(age = category) %>%
   moz.utils::separate_survey_id() %>%
-  filter(kp == "FSW",
+  filter(kp == "FSW", 
          age %in% 15:49) %>%
   type.convert(as.is = T) %>%
   filter(!is.na(age)) %>%
   select(iso3, survey_id, year, age, n) %>% 
-  # single_year_to_five_year(T) %>%
-  mutate(age_group = factor(age)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
+  single_year_to_five_year(T) %>%
+  mutate(age_group = factor(age_group)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
   group_by(iso3, survey_id, year, age_group) %>%
   summarise(n = sum(n)) %>% 
   ungroup() %>% 
@@ -81,7 +81,8 @@ dat <- crossing(age_group = dat$age_group,
 
 # For age_groups
 spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds") %>% 
-  filter(year %in% c(1993:2023))
+  filter(year %in% c(1993:2023)) %>% 
+  ungroup()
 
 # For single year age
 spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds")
@@ -123,6 +124,7 @@ spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds")
 #   select(-totpop)
 # spectrum_data_grouped <- readRDS("~/Downloads/specgrouped.rds")
 
+# mf_model w/out year
 mf_model <- spectrum_data_f %>%
   distinct(age_group, iso3) %>% 
   ungroup() %>%
@@ -136,16 +138,43 @@ mf_model <- spectrum_data_f %>%
   # select(tpa) %>% 
   # filter(year %in% c(1993:2023)) 
 
-# New mf_model below
-mf_model2 <- crossing(iso3 = ssa_iso3(),
-                     age_group = unique(spectrum_data_f$age_group)) %>%
+# mf_model w/out year
+mf_model <- spectrum_data_f %>%
+  distinct(age_group, iso3, year) %>% 
+  ungroup() %>%
   mutate(age_group = factor(age_group),
          id.age =  factor(to_int(age_group)),
          # id.iso3 = factor(as.numeric(factor(iso3))),            
          idx = factor(row_number())) %>% 
-  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id) %>% st_drop_geometry() %>% mutate(id.iso3 = factor(row_number()))) 
-  # filter(!iso3== "NGA") %>% 
-  # mutate(is15 = ifelse(age_group == "Y015_019", 1, 0))
+  # id.year = as.numeric(factor(year))-1) %>% 
+  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
+  filter(year %in% c(1993:2023))
+
+mf_model <- spectrum_data_f %>%
+  # distinct(age_group, iso3) %>% 
+  ungroup() %>%
+  mutate(age_group = factor(age_group),
+         id.age =  factor(to_int(age_group)),
+         # id.iso3 = factor(as.numeric(factor(iso3))),            
+         idx = factor(row_number()), 
+  id.year = as.numeric(factor(year))-1) %>%
+  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
+type.convert(as.is = T) %>%
+# select(tpa) %>%
+filter(year %in% c(1993:2023)) %>% 
+  mutate(year = factor(year),
+         age_group = factor(age_group))
+
+# defunct mf_model
+# mf_model2 <- crossing(iso3 = ssa_iso3(),
+#                      age_group = unique(spectrum_data_f$age_group)) %>%
+#   mutate(age_group = factor(age_group),
+#          id.age =  factor(to_int(age_group)),
+#          # id.iso3 = factor(as.numeric(factor(iso3))),            
+#          idx = factor(row_number())) %>% 
+#   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id) %>% st_drop_geometry() %>% mutate(id.iso3 = factor(row_number()))) 
+#   # filter(!iso3== "NGA") %>% 
+#   # mutate(is15 = ifelse(age_group == "Y015_019", 1, 0))
 
 
 # dat <- crossing(id.age = 1:7,
@@ -157,13 +186,15 @@ mf_model2 <- crossing(iso3 = ssa_iso3(),
 #   mutate(id.age = factor(id.age))
 
 dat2 <- dat %>%
-  left_join(mf_model) 
+  left_join(mf_model)
+  # mutate(idx = as.numeric(idx))
 
+dat2$n[is.na(dat2$n)] <- 0
 
 dat2 <- dat2 %>% 
   group_by(survey_id) %>% 
   mutate(pa = n/sum(n)) 
-  
+
 
 sd(dat2$tpa)
 sd(dat2$pa)
@@ -174,9 +205,10 @@ ggplot() +
   geom_point(aes(x = tpa, y = pa, color = region)) +
   ggpmisc::stat_poly_eq(aes(x = tpa, y = pa))
 
-dat2$n[is.na(dat2$n)] <- 0
+
 
 # How does M_obs know the size of mf_model? 
+
 M_obs <- sparse.model.matrix(~0 + idx, dat2)   
 Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
@@ -235,9 +267,9 @@ tmb_int$data <- list(
   Z_spatial = Z_spatial,
   R_spatial = as(diag(1, nrow = length(unique(mf_model$id.iso3))), "dgCMatrix"),
   Z_spaceage = Z_spaceage,
-  # Z_period = Z_period,
-  # R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
-  # Z_periodage = Z_periodage,
+  Z_period = Z_period,
+  R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
+  Z_periodage = Z_periodage,
   R_spatial2 = dfertility::make_adjacency_matrix(read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% st_make_valid(), 0)
 )
 
@@ -250,24 +282,25 @@ tmb_int$par <- list(
   
   eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
   log_prec_eta3 = 0,
-  logit_eta3_phi_age = 0
+  logit_eta3_phi_age = 0,
   # lag_logit_eta3_phi_age = 0
   
-  # logit_eta2_phi_age = 0,
-  # eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
-  # log_prec_eta2 = 0,
-  # logit_eta2_phi_period = 0
-  
+  logit_eta2_phi_age = 0,
+  eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
+  log_prec_eta2 = 0,
+  logit_eta2_phi_period = 0,
+  logit_eta2_phi_age = 0
+
 )
 
 tmb_int$random <- c(                          
   "beta_0",
-  "eta3"
-  # "eta2"
+  "eta3",
+  "eta2"
   
 )
 
-# setwd("~/Documents/Github/kp-age")
+setwd("~/Documents/Github/kp-age")
 
 tmb_unload <- function(name) {   
   ldll <- getLoadedDLLs()   
@@ -362,10 +395,11 @@ dat3 <- dat2 %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>%
 
 
 estimated_mf %>%
+  mutate(year = factor(year)) %>% 
   ggplot() + 
-  geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = survey_id), show.legend = F, size = 1) +
-  geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper), alpha = 0.75, fill = "grey") +
-  geom_line(aes(x = age_group, y = mean), show.legend = F) +
+  geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa), show.legend = F, size = 1, color = "black") +
+  geom_ribbon(aes(x = age_group, ymin = lower, ymax = upper, fill = year), alpha = 0.75) + # , fill = "grey"
+  geom_line(aes(x = age_group, y = mean, color = year), show.legend = F) +
   facet_wrap(~iso3) +
   # moz.utils::standard_theme() 
   theme(panel.background = element_rect(fill = NA)) +
