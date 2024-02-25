@@ -251,11 +251,12 @@ Z_survage <-  mgcv::tensor.prod.model.matrix(list(Z_surv, Z_age))
 
 observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE)
 
-# Is it fine that observed totpop is a different length to observed_x? Yes right? 
+
+# To produce logit_totpop with real values
 observed_totpop <- matrix(mf_model$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
 logit_totpop <- qlogis(observed_totpop)
 
-# If we want to remove logit_totpop this produces a matrix of 0
+# To remove logit_totpop this produces a matrix of 0
 logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
 
 tmb_int <- list()
