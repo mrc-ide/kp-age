@@ -138,7 +138,7 @@ mf_model <- spectrum_data_f %>%
   # select(tpa) %>% 
   # filter(year %in% c(1993:2023)) 
 
-# mf_model w/out year
+# mf_model w/year
 mf_model <- spectrum_data_f %>%
   distinct(age_group, iso3, year) %>% 
   ungroup() %>%
@@ -191,19 +191,19 @@ dat2 <- dat %>%
 
 dat2$n[is.na(dat2$n)] <- 0
 
-dat2 <- dat2 %>% 
-  group_by(survey_id) %>% 
-  mutate(pa = n/sum(n)) 
-
-
-sd(dat2$tpa)
-sd(dat2$pa)
-
-dat2 %>% 
-  left_join(moz.utils::region()) %>% 
-ggplot() + 
-  geom_point(aes(x = tpa, y = pa, color = region)) +
-  ggpmisc::stat_poly_eq(aes(x = tpa, y = pa))
+# dat2 <- dat2 %>% 
+#   group_by(survey_id) %>% 
+#   mutate(pa = n/sum(n)) 
+# 
+# 
+# sd(dat2$tpa)
+# sd(dat2$pa)
+# 
+# dat2 %>% 
+#   left_join(moz.utils::region()) %>% 
+# ggplot() + 
+#   geom_point(aes(x = tpa, y = pa, color = region)) +
+#   ggpmisc::stat_poly_eq(aes(x = tpa, y = pa))
 
 
 
@@ -232,15 +232,20 @@ X_stand_in <- X_stand_in %*% spline_mat
 Z_spaceage <-  mgcv::tensor.prod.model.matrix(list(Z_spatial, Z_age))
 
 
-mf_model <- mf_model %>% 
-  mutate(year = factor(year))
+# mf_model <- mf_model %>% 
+#   mutate(year = factor(year))
 
 Z_period <- sparse.model.matrix(~0 + year, mf_model)
 
 Z_periodage <-  mgcv::tensor.prod.model.matrix(list(Z_period, Z_age))
 dim(Z_periodage)
 dim(X_stand_in)
-# Dimensions here are causing crash (I think) - but unsure on the fix
+
+
+Z_surv <- sparse.model.matrix(~0 + survey_id, dat2)
+
+Z_survage <-  mgcv::tensor.prod.model.matrix(list(Z_surv, Z_age))
+
 
 
 
@@ -261,16 +266,21 @@ tmb_int$data <- list(
   X_stand_in = X_stand_in,
   R_beta = dfertility::make_rw_structure_matrix(ncol(X_stand_in), 1, adjust_diagonal = TRUE),  ##captures relationship between age
   
-  logit_totpop = logit_totpop,
+  logit_totpop = logit_totpop
   
-  R_survey = as(diag(1, nrow = length(unique(dat$survey_id))), "dgCMatrix"),
-  Z_spatial = Z_spatial,
-  R_spatial = as(diag(1, nrow = length(unique(mf_model$id.iso3))), "dgCMatrix"),
-  Z_spaceage = Z_spaceage,
-  Z_period = Z_period,
-  R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
-  Z_periodage = Z_periodage,
-  R_spatial2 = dfertility::make_adjacency_matrix(read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% st_make_valid(), 0)
+  # R_survey = as(diag(1, nrow = length(unique(dat$survey_id))), "dgCMatrix"),
+  # Z_spatial = Z_spatial,
+  # R_spatial = as(diag(1, nrow = length(unique(mf_model$id.iso3))), "dgCMatrix"),
+  # Z_spaceage = Z_spaceage,
+  # R_spatial2 = dfertility::make_adjacency_matrix(read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% st_make_valid(), 0),
+  
+  # Z_period = Z_period,
+  # R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
+  # Z_periodage = Z_periodage,
+  
+  # Z_survage = Z_survage,
+  # Z_surv = Z_surv,
+  # R_surv = as(diag(1, nrow = length(unique(dat2$survey_id))), "dgCMatrix")
 )
 
 
@@ -278,25 +288,30 @@ tmb_int$par <- list(
   beta_0 = rep(0, ncol(X_stand_in)),
   
   log_prec_rw_beta = 0,
-  lag_logit_phi_beta = 0,
+  lag_logit_phi_beta = 0
   
-  eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
-  log_prec_eta3 = 0,
-  logit_eta3_phi_age = 0,
-  # lag_logit_eta3_phi_age = 0
-  
-  logit_eta2_phi_age = 0,
-  eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
-  log_prec_eta2 = 0,
-  logit_eta2_phi_period = 0,
-  logit_eta2_phi_age = 0
+  # eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
+  # log_prec_eta3 = 0,
+  # logit_eta3_phi_age = 0,
+  # # lag_logit_eta3_phi_age = 0
+  # 
+  # logit_eta2_phi_age = 0,
+  # eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
+  # log_prec_eta2 = 0,
+  # logit_eta2_phi_period = 0,
+  # logit_eta2_phi_age = 0,
+  # 
+  # eta_surv = array(0, c(ncol(Z_surv), ncol(Z_age))),
+  # log_prec_eta_surv = 0,
+  # logit_eta_surv_phi_age = 0
 
 )
 
 tmb_int$random <- c(                          
-  "beta_0",
-  "eta3",
-  "eta2"
+  "beta_0"
+  # "eta3",
+  # "eta2",
+  # "eta_surv"
   
 )
 
