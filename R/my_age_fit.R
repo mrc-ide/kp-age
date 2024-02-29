@@ -294,13 +294,13 @@ tmb_unload <- function(name) {
 }
 
 
-tmb_unload("flib2")
+tmb_unload("flib")
 
 lapply(list.files("src/", pattern = "\\.o|\\.so", full.names = T), file.remove)
 
-TMB::compile("src/flib2.cpp", flags = "-w")
+TMB::compile("src/flib.cpp", flags = "-w")
 
-dyn.load(dynlib("src/flib2"))
+dyn.load(dynlib("src/flib"))
 
 
 
