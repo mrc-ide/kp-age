@@ -127,7 +127,7 @@ spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds") %>%
 
 # mf_model w/year
 mf_model <- spectrum_data_f %>%
-  distinct(age_group, iso3, year) %>% 
+  distinct(age_group, iso3, year, tpa) %>% 
   ungroup() %>%
   mutate(id.age =  factor(to_int(age_group))
          # id.year = factor(to_int(year)),
@@ -269,7 +269,7 @@ tmb_int$par <- list(
   eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
   log_prec_eta2 = 0,
   logit_eta2_phi_period = 0,
-  
+  # 
   eta_surv = array(0, c(ncol(Z_survey), ncol(Z_age))),
   log_prec_eta_surv = 0,
   logit_eta_surv_phi_age = 0
@@ -383,7 +383,7 @@ estimated_mf %>%
   mutate(year = factor(year)) %>% 
   ggplot(aes(x=age_group + 14, group = survey_id)) + 
   geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = id.year), show.legend = F, size = 0.7, alpha = 0.6) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = year), alpha = 0.75) + # , fill = "grey"
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = year), alpha = 0.75) +  
   geom_line(aes(y = mean, color = year), show.legend = F) +
   facet_wrap(~iso3) +
   # moz.utils::standard_theme() 
@@ -394,6 +394,19 @@ estimated_mf %>%
   #       plot.title = element_text(size = 12))
 
 
+estimated_mf %>%
+  mutate(year = factor(year)) %>% 
+  ggplot(aes(x=age_group + 14, group = survey_id)) + 
+  geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = id.year), show.legend = F, size = 0.7, alpha = 0.6) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "darkgrey") + # 
+  geom_line(aes(y = mean), show.legend = F) +
+  geom_line(data = nooffset, aes(y = mean, x = age_group + 14),  color = "red") +
+  facet_wrap(~survey_id) +
+  # moz.utils::standard_theme() 
+  theme(panel.background = element_rect(fill = NA)) +
+  labs(y = "Proportion of sex-workers per age group")
+
+nooffset <- estimated_mf 
 
 as.matrix((data.frame(sd_report) %>% 
   rownames_to_column() %>% 
@@ -410,6 +423,25 @@ timetrend <- data.frame(sd_report) %>%
 
 
 timetrend <- timetrend$Estimate
+
+
+estimated_mf %>% 
+  mutate(under25 = factor(ifelse(age_group<11, "<25", "25+"))) %>% 
+  group_by(survey_id, under25, iso3, year) %>% 
+  summarise(cumulative = sum(mean)) %>% 
+  ungroup() %>% 
+  left_join(dat3 %>% mutate(under25 = factor(ifelse(age_group<25, "<25", "25+"))) %>% group_by(survey_id, under25) %>% summarise(n = sum(n))) %>% 
+  ggplot() +
+  # geom_line(aes(x = year, y = cumulative, color = under25)) + 
+  # facet_wrap(~iso3)
+  geom_point(aes(x = year, y = cumulative, color = under25, size = n)) + 
+  geom_smooth(aes(x = year, y = cumulative, color = under25, weight = n), method = lm) + 
+  moz.utils::standard_theme() +
+  labs(x = "Year", y = "Proportion of FSW pop.") + 
+  # facet_wrap(~iso3) + 
+  lims(y = c(0,1))
+
+  
 setwd("~/Documents/Github/kp-age")
 
 
