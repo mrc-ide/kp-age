@@ -32,8 +32,8 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
   type.convert(as.is = T) %>%
   filter(!is.na(age)) %>%
   select(iso3, survey_id, year, age, n) %>% 
-  single_year_to_five_year(T) %>%
-  mutate(age_group = factor(age_group)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
+  # single_year_to_five_year(T) %>%
+  mutate(age_group = factor(age)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
   group_by(iso3, survey_id, year, age_group) %>%
   summarise(n = sum(n)) %>% 
   ungroup() %>% 
@@ -129,11 +129,13 @@ spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds") %>%
 mf_model <- spectrum_data_f %>%
   distinct(age_group, iso3, year) %>% 
   ungroup() %>%
-  mutate(id.age =  factor(to_int(age_group)),
-         id.year = factor(to_int(year)),
-         idx = factor(row_number())) %>% 
+  mutate(id.age =  factor(to_int(age_group))
+         # id.year = factor(to_int(year)),
+         ) %>% 
   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
-  filter(year %in% c(1993:2023))
+  filter(year %in% c(1993:2023)) %>% 
+  mutate(id.year = factor(year),
+         idx = factor(row_number()))
 
 # defunct mf_model
 # mf_model2 <- crossing(iso3 = ssa_iso3(),
@@ -170,7 +172,7 @@ dat2$n[is.na(dat2$n)] <- 0
 
 
 
-# How does M_obs know the size of mf_model? 
+# How does M_obs know the size of mf_model? - Ans: idx comes from mf_model
 M_obs <- sparse.model.matrix(~0 + idx, dat2) 
 Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
@@ -306,7 +308,7 @@ dyn.load(dynlib("src/flib"))
 
 f <- parallel::mcparallel({TMB::MakeADFun(data = tmb_int$data,
                                           parameters = tmb_int$par,
-                                          DLL = "flib2",
+                                          DLL = "flib",
                                           silent=0,
                                           checkParameterOrder=FALSE)
 })
@@ -319,7 +321,7 @@ if(is.null(parallel::mccollect(f)[[1]])) {
 
 obj <-  TMB::MakeADFun(data = tmb_int$data,
                        parameters = tmb_int$par,
-                       DLL = "flib2",
+                       DLL = "flib",
                        random = tmb_int$random,
                        hessian = FALSE)
 
@@ -380,7 +382,7 @@ dat3 <- dat2 %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>%
 estimated_mf %>%
   mutate(year = factor(year)) %>% 
   ggplot(aes(x=age_group + 14, group = survey_id)) + 
-  geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa), show.legend = F, size = 1, color = "black") +
+  geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = id.year), show.legend = F, size = 0.7, alpha = 0.6) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = year), alpha = 0.75) + # , fill = "grey"
   geom_line(aes(y = mean, color = year), show.legend = F) +
   facet_wrap(~iso3) +
@@ -391,7 +393,43 @@ estimated_mf %>%
   # theme(plot.tag = element_text(size = 12),
   #       plot.title = element_text(size = 12))
 
+
+
+as.matrix((data.frame(sd_report) %>% 
+  rownames_to_column() %>% 
+  filter(str_starts(rowname, "eta2")) %>% 
+  select(Estimate) %>% 
+    mutate(Estimate = factor(Estimate))), nrow = (ncol(X_stand_in)), ncol = ncol(Z_period), byrow = T)
+
+
+
+timetrend <- data.frame(sd_report) %>% 
+    rownames_to_column() %>% 
+    filter(str_starts(rowname, "eta2")) %>% 
+    select(Estimate) 
+
+
+timetrend <- timetrend$Estimate
 setwd("~/Documents/Github/kp-age")
+
+
+data.frame(matrix(timetrend, ncol = (ncol(X_stand_in)), nrow = ncol(Z_period), byrow = T)) %>% 
+  rownames_to_column() %>% 
+  pivot_longer(cols = starts_with("X"), names_to = "age", values_to = "estimate") %>% 
+  type.convert(as.is = T) %>% 
+  ggplot() + 
+  geom_line(aes(x = rowname, y = estimate, color = age))
+
+data.frame(matrix(timetrend, nrow = (ncol(X_stand_in)), ncol= ncol(Z_period), byrow = T)) %>% 
+  rownames_to_column() %>% 
+  pivot_longer(cols = starts_with("X"), names_to = "year", values_to = "estimate") %>% 
+  type.convert(as.is = T) %>% 
+  mutate(rowname = factor(rowname),
+         year = to_int(year)) %>% 
+  ggplot() + 
+  geom_line(aes(x = year, y = estimate, color = rowname))
+
+
 # library(tidyverse)
 # library(sf)
 # library(dfertility)
