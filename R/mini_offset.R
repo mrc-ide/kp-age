@@ -23,7 +23,7 @@ library(TMB)
 # }
 
 
-dat <- read_csv("~/Downloads/nga2.csv") %>% 
+dat <- read_csv("~/Downloads/nga2 1.csv") %>% 
   pivot_longer(names_to = "age_group",
                values_to = "n",
                cols = everything()) %>% 
@@ -47,12 +47,16 @@ mf_model <- spectrum_data_f %>%
   mutate(id.age =  factor(to_int(age_group))
          ) %>% 
   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
-  filter(year %in% c(1993:2023),
-         !age_group == "Y045_049") %>% 
+  filter(year %in% c(1993:2023)
+         # !age_group == "Y045_049"
+         ) %>% 
   mutate(id.year = factor(year),
          idx = factor(row_number()))
 
-
+mf_model <- mf_model %>%
+  filter(iso3 == "NGA",
+         year == 2020) %>%
+  droplevels()
 
 dat2 <- dat %>%
   type.convert(as.is = T) %>%
@@ -81,7 +85,7 @@ observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE
 
 
 # fake logit_totpop used for VGAM model --> VGAM only needed 6 valyes 
-logit_totpop <- cbind(qlogis(0.2), qlogis(0.3), qlogis(0.2), qlogis(0.1), qlogis(0.1), qlogis(0.1))
+logit_totpop <- cbind(qlogis(0.2), qlogis(0.3), qlogis(0.2), qlogis(0.1), qlogis(0.1), qlogis(0.1), 0)
 
 # To remove logit_totpop this produces a matrix of 0
 logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
@@ -100,9 +104,9 @@ tmb_int$data <- list(
 
 
 tmb_int$par <- list( 
-  beta_0 = rep(0, ncol(X_stand_in)),
-  
-  log_prec_rw_beta = 0
+  beta_0 = rep(0, ncol(X_stand_in))
+  # lag_logit_phi_beta = 0,
+  # log_prec_rw_beta = 0
   
 )
 
@@ -152,7 +156,7 @@ if(is.null(parallel::mccollect(f)[[1]])) {
 obj <-  TMB::MakeADFun(data = tmb_int$data,
                        parameters = tmb_int$par,
                        DLL = "flib",
-                       random = tmb_int$random,
+                       # random = tmb_int$random,
                        hessian = FALSE)
 
 f <- stats::nlminb(obj$par, obj$fn, obj$gr)
@@ -171,7 +175,37 @@ class(fit) <- "naomi_fit"
 fit <- naomi::sample_tmb(fit, random_only=TRUE)
 int <- apply(fit$sample$p_norm, 1, quantile, c(0.025, 0.975))
 
+#### VGAM
 
+library(tidyverse)
+library(VGAM)
+
+
+# nga <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/NGA/NGA2020BBS_FSW/NGA2020BBS_FSW.rds")
+# 
+# nga <- nga %>%
+#   mutate(age= as.numeric(age)
+#   ) %>% 
+#   select(age) %>% 
+#   single_year_to_five_year()
+# 
+# nga2 <- nga %>% 
+#   count(age_group) %>% 
+#   pivot_wider(names_from = age_group, values_from = n)
+# # pivot_wider(names_from = age_group, values_from = prop)
+
+vgam_dat <- dat %>%
+  pivot_wider(names_from = age_group, values_from = n)
+
+offset2 = cbind(qlogis(0.2), qlogis(0.3), qlogis(0.2), qlogis(0.1), qlogis(0.1), qlogis(0.1))
+
+model1 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = vgam_dat)
+model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = vgam_dat, offset = offset2)
+
+summary(model1)
+summary(model2)
+
+sd_report
 
 estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
   rownames_to_column() %>% 

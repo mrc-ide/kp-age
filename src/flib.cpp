@@ -39,12 +39,12 @@ Type objective_function<Type>::operator() ()
   
   // nll -= dnorm(beta_0, Type(0), Type(sqrt(1/0.001)), true).sum();  //Prior for the intercept, v diffuse prior
   
-  PARAMETER(log_prec_rw_beta);
-  Type prec_rw_beta = exp(log_prec_rw_beta);
-  nll -= dgamma(prec_rw_beta, Type(1), Type(2000), true);
-  // Run these two if you want iid/RW instead of AR1
-    nll -= Type(-0.5) * (beta_0 * (R_beta * beta_0)).sum();
-  nll -= dnorm(beta_0.sum(), Type(0), Type(0.01) * beta_0.size(), true);
+  // PARAMETER(log_prec_rw_beta);
+  // Type prec_rw_beta = exp(log_prec_rw_beta);
+  // nll -= dgamma(prec_rw_beta, Type(1), Type(2000), true);
+  // // Run these two if you want iid/RW instead of AR1
+  //   nll -= Type(-0.5) * (beta_0 * (R_beta * beta_0)).sum();
+  // nll -= dnorm(beta_0.sum(), Type(0), Type(0.01) * beta_0.size(), true);
 
   // /// Make AR1 on beta 0 - Run 50-54
   // PARAMETER(lag_logit_phi_beta);
@@ -155,7 +155,7 @@ Type objective_function<Type>::operator() ()
   /////////// Multinomial model --> Logit is our link 
   
   vector<Type> logit_p(
-      X_stand_in * beta_0 * sqrt(1/prec_rw_beta) 
+      X_stand_in * beta_0
     // + Z_spaceage * eta3_v * sqrt(1/prec_eta3)
     // + Z_periodage * eta2_v * sqrt(1/prec_eta2)
     + logit_totpop
