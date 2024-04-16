@@ -23,40 +23,91 @@ library(TMB)
 # }
 
 
-dat <- read_csv("~/Downloads/nga2 1.csv") %>% 
-  pivot_longer(names_to = "age_group",
-               values_to = "n",
-               cols = everything()) %>% 
-  mutate(age_group = factor(age_group),
-         year = 2020,
-         iso3 = "NGA",
-         survey_id = "NGA2020BBS_FSW")
+# dat <- read_csv("~/Downloads/nga2.csv") %>% 
+#   pivot_longer(names_to = "age_group",
+#                values_to = "n",
+#                cols = everything()) %>% 
+#   mutate(age_group = factor(age_group),
+#          year = 2020,
+#          iso3 = "NGA",
+#          survey_id = "NGA2020BBS_FSW")
+# 
+# 
+# 
+# # For age_groups
+# spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds") %>% 
+#   filter(year %in% c(1993:2023)) %>% 
+#   ungroup() 
 
 
+# # mf_model w/year
+# mf_model <- spectrum_data_f %>%
+#   distinct(age_group, iso3, year, tpa) %>% 
+#   ungroup() %>%
+#   mutate(id.age =  factor(to_int(age_group))
+#          ) %>% 
+#   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
+#   filter(year %in% c(1993:2023)
+#          # !age_group == "Y045_049"
+#          ) %>% 
+#   mutate(id.year = factor(year),
+#          idx = factor(row_number()))
+# 
+# mf_model <- mf_model %>%
+#   filter(iso3 == "NGA",
+#          year == 2020) %>%
+#   droplevels()
+# 
+# dat2 <- dat %>%
+#   type.convert(as.is = T) %>%
+#   left_join(mf_model) 
+# 
+# dat2$n[is.na(dat2$n)] <- 0
+dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/fullweightedandunweighteddata_0210.rds") %>%
+  filter(vars == "age") %>%
+  mutate(method = ifelse(is.na(lower), "convenience", "RDS")) %>%
+  rename(age = category) %>%
+  moz.utils::separate_survey_id() %>%
+  filter(kp == "FSW", 
+         age %in% 15:49) %>%
+  type.convert(as.is = T) %>%
+  filter(!is.na(age)) %>%
+  select(iso3, survey_id, year, age, n) %>% 
+  single_year_to_five_year(T) %>%
+  mutate(age_group = factor(age_group)) %>% 
+  group_by(iso3, survey_id, year, age_group) %>%
+  summarise(n = sum(n)) %>% 
+  ungroup() %>% 
+  mutate(year = factor(year))
 
-# For age_groups
+dat <- crossing(age_group = dat$age_group,
+                select(dat, iso3, survey_id, year)) %>%
+  arrange(survey_id) %>%
+  # filter(!survey_id %in% c("ZAF1998ACA_FSW")) %>%
+  filter(!survey_id %in% c("ZAF1998ACA_FSW", "ETH2020ACA_FSW")) %>%
+  left_join(dat)
+
 spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds") %>% 
   filter(year %in% c(1993:2023)) %>% 
   ungroup() 
-
 
 # mf_model w/year
 mf_model <- spectrum_data_f %>%
   distinct(age_group, iso3, year, tpa) %>% 
   ungroup() %>%
   mutate(id.age =  factor(to_int(age_group))
-         ) %>% 
+  ) %>% 
   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
-  filter(year %in% c(1993:2023)
-         # !age_group == "Y045_049"
-         ) %>% 
+  filter(year %in% c(1993:2023)) %>% 
   mutate(id.year = factor(year),
-         idx = factor(row_number()))
+         idx = factor(row_number())) %>% 
+  group_by(iso3, year) %>% 
+  mutate(
+    # tpa = tpa - tpa[age_group == "Y045_049"],
+    tpa = ifelse(age_group == "Y045_049", 0.5, tpa)) %>% 
+  ungroup()
 
-mf_model <- mf_model %>%
-  filter(iso3 == "NGA",
-         year == 2020) %>%
-  droplevels()
+
 
 dat2 <- dat %>%
   type.convert(as.is = T) %>%
@@ -64,15 +115,11 @@ dat2 <- dat %>%
 
 dat2$n[is.na(dat2$n)] <- 0
 
-
 # TMB Data objects
 
 M_obs <- sparse.model.matrix(~0 + idx, dat2) 
-# M_obs <- M_obs[-7] - it doesn't like this
-# M_obs <- M_obs[rownames(M_obs) != "7"]
+
 X_stand_in <- sparse.model.matrix(~0 + id.age, mf_model)
-# Trying to drop the last column because that is VGAM model's base cat
-# X_stand_in[,7] <- 0 ## THis isn't the right approach because it estimates 7 beta values still
 X_stand_in <- X_stand_in[,c(1:6)]
 
 
@@ -83,12 +130,18 @@ Z_age_observations <- sparse.model.matrix(~0 + id.age, dat2)
 observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE)
 
 
+####### USE THIS TO REPLICATE CURRENT ERROR ######
+observed_totpop <- matrix(mf_model$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
+logit_totpop <- qlogis(observed_totpop)
 
-# fake logit_totpop used for VGAM model --> VGAM only needed 6 valyes 
-logit_totpop <- cbind(qlogis(0.2), qlogis(0.3), qlogis(0.2), qlogis(0.1), qlogis(0.1), qlogis(0.1), 0)
+# # To remove logit_totpop this produces a matrix of 0
+# logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
 
-# To remove logit_totpop this produces a matrix of 0
-logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
+# # Commented out for time being
+# # fake logit_totpop used for VGAM model --> VGAM only needed 6 valyes 
+# logit_totpop <- cbind(qlogis(0.2), qlogis(0.3), qlogis(0.2), qlogis(0.1), qlogis(0.1), qlogis(0.1), 0)
+# 
+
 
 tmb_int <- list()
 
@@ -111,14 +164,11 @@ tmb_int$par <- list(
 )
 
 tmb_int$random <- c(                          
-  "beta_0"
+  # "beta_0"
 
 
 )
 
-
-# May need to amend file path sorry!
-setwd("~/Downloads")
 
 tmb_unload <- function(name) {   
   ldll <- getLoadedDLLs()   
@@ -170,10 +220,10 @@ sd_report <- fit$sdreport
 sd_report <- summary(sd_report, "all")
 sd_report
 
-class(fit) <- "naomi_fit"
-# debugonce(naomi::sample_tmb)
-fit <- naomi::sample_tmb(fit, random_only=TRUE)
-int <- apply(fit$sample$p_norm, 1, quantile, c(0.025, 0.975))
+# class(fit) <- "naomi_fit"
+# # debugonce(naomi::sample_tmb)
+# fit <- naomi::sample_tmb(fit, random_only=TRUE)
+# int <- apply(fit$sample$p_norm, 1, quantile, c(0.025, 0.975))
 
 #### VGAM
 
@@ -197,10 +247,16 @@ library(VGAM)
 vgam_dat <- dat %>%
   pivot_wider(names_from = age_group, values_from = n)
 
-offset2 = cbind(qlogis(0.2), qlogis(0.3), qlogis(0.2), qlogis(0.1), qlogis(0.1), qlogis(0.1))
+mini_offset <- matrix(dat2$tpa, ncol = length(unique(dat2$age_group)), byrow = TRUE)
+mini_logit_totpop <- qlogis(mini_offset)
+
+# offset2 = cbind(qlogis(0.16), qlogis(0.26), qlogis(0.16), qlogis(0.06), qlogis(0.06), qlogis(0.01))
+
+offset2 = mini_logit_totpop[,c(1:6)]
 
 model1 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = vgam_dat)
 model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = vgam_dat, offset = offset2)
+
 
 summary(model1)
 summary(model2)
