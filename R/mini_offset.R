@@ -131,11 +131,11 @@ observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE
 
 
 ####### USE THIS TO REPLICATE CURRENT ERROR ######
-observed_totpop <- matrix(mf_model$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
+observed_totpop <- matrix(dat2$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
 logit_totpop <- qlogis(observed_totpop)
 
 # # To remove logit_totpop this produces a matrix of 0
-# logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
+logit_totpop <- matrix(rep(0, nrow(dat2)), ncol = length(unique(mf_model$age_group)), byrow = T)
 
 # # Commented out for time being
 # # fake logit_totpop used for VGAM model --> VGAM only needed 6 valyes 
@@ -220,6 +220,9 @@ sd_report <- fit$sdreport
 sd_report <- summary(sd_report, "all")
 sd_report
 
+sd_report_offset <- sd_report
+# sd_report_no_offset <- sd_report
+
 # class(fit) <- "naomi_fit"
 # # debugonce(naomi::sample_tmb)
 # fit <- naomi::sample_tmb(fit, random_only=TRUE)
@@ -245,23 +248,33 @@ library(VGAM)
 # # pivot_wider(names_from = age_group, values_from = prop)
 
 vgam_dat <- dat %>%
-  pivot_wider(names_from = age_group, values_from = n)
+  pivot_wider(names_from = age_group, values_from = n) %>%
+  select(starts_with("Y0"))
 
-mini_offset <- matrix(dat2$tpa, ncol = length(unique(dat2$age_group)), byrow = TRUE)
-mini_logit_totpop <- qlogis(mini_offset)
+# mini_offset <- matrix(dat2$tpa, ncol = length(unique(dat2$age_group)), byrow = TRUE)
+# mini_logit_totpop <- qlogis(mini_offset)
 
 # offset2 = cbind(qlogis(0.16), qlogis(0.26), qlogis(0.16), qlogis(0.06), qlogis(0.06), qlogis(0.01))
 
-offset2 = mini_logit_totpop[,c(1:6)]
+offset2 = logit_totpop[,c(1:6)]
 
-model1 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = vgam_dat)
-model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = vgam_dat, offset = offset2)
+model1 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = multinomial, data = vgam_dat)
+model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1 + offset(offset2), family = multinomial, data = vgam_dat)
+# model3 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = multinomial, data = vgam_dat, offset = offset2)
 
+multilogitlink(plogis(logit_totpop))
 
-summary(model1)
 summary(model2)
 
-sd_report
+s1 <- summary(model1)
+s2 <- summary(model2)
+
+data.frame(vglm_no_offest = s1@coefficients,
+           vglm_with_offset = s2@coefficients,
+           TMB_with_offset = sd_report_offset[,1],
+           TMB_no_offset = sd_report_no_offset[,1]
+)
+
 
 estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
   rownames_to_column() %>% 

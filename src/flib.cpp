@@ -158,10 +158,11 @@ Type objective_function<Type>::operator() ()
       X_stand_in * beta_0
     // + Z_spaceage * eta3_v * sqrt(1/prec_eta3)
     // + Z_periodage * eta2_v * sqrt(1/prec_eta2)
-    + logit_totpop
   );
   
-  vector<Type> logit_p2(M_obs*logit_p);
+  vector<Type> logit_p2(M_obs*logit_p +
+                        logit_totpop    
+    );
                           // + Z_survage * eta_surv_v * sqrt(1/prec_eta_surv));
 
   vector<Type> p(exp(logit_p2));
