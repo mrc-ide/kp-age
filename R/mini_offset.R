@@ -103,15 +103,27 @@ mf_model <- spectrum_data_f %>%
          idx = factor(row_number())) %>% 
   group_by(iso3, year) %>% 
   mutate(
+    offset = log(tpa) - log(tpa[age_group == "Y045_049"]), 
     # tpa = tpa - tpa[age_group == "Y045_049"],
     tpa = ifelse(age_group == "Y045_049", 0.5, tpa)) %>% 
   ungroup()
 
 
+mf_model <- mf_model %>% 
+  filter(
+    year == 2021,
+         iso3 == "BDI"
+    # year == 1993,
+    #      iso3 == "BEN"
+    ) %>% 
+  droplevels()
 
 dat2 <- dat %>%
+  filter(survey_id == "BDI2021BBS_FSW") %>%
+  # filter(survey_id == "BEN1993ACA_FSW") %>%
   type.convert(as.is = T) %>%
-  left_join(mf_model) 
+  left_join(mf_model) %>% 
+  droplevels()
 
 dat2$n[is.na(dat2$n)] <- 0
 
@@ -132,10 +144,12 @@ observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE
 
 ####### USE THIS TO REPLICATE CURRENT ERROR ######
 observed_totpop <- matrix(dat2$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
-logit_totpop <- qlogis(observed_totpop)
+newoffset <- matrix(dat2$offset, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
+
+# logit_totpop <- qlogis(observed_totpop)
 
 # # To remove logit_totpop this produces a matrix of 0
-logit_totpop <- matrix(rep(0, nrow(dat2)), ncol = length(unique(mf_model$age_group)), byrow = T)
+newoffset <- matrix(rep(0, nrow(dat2)), ncol = length(unique(mf_model$age_group)), byrow = T)
 
 # # Commented out for time being
 # # fake logit_totpop used for VGAM model --> VGAM only needed 6 valyes 
@@ -152,7 +166,8 @@ tmb_int$data <- list(
   
   R_beta = as(diag(1, nrow = (length(unique(dat2$id.age)))-1), "dgTMatrix"),
 
-  logit_totpop = logit_totpop
+  # logit_totpop = logit_totpop
+  logit_totpop = newoffset
 )
 
 
@@ -248,6 +263,8 @@ library(VGAM)
 # # pivot_wider(names_from = age_group, values_from = prop)
 
 vgam_dat <- dat %>%
+  # filter(survey_id == "BDI2021BBS_FSW") %>% 
+  filter(survey_id == "BEN1993ACA_FSW") %>% 
   pivot_wider(names_from = age_group, values_from = n) %>%
   select(starts_with("Y0"))
 
@@ -256,7 +273,8 @@ vgam_dat <- dat %>%
 
 # offset2 = cbind(qlogis(0.16), qlogis(0.26), qlogis(0.16), qlogis(0.06), qlogis(0.06), qlogis(0.01))
 
-offset2 = logit_totpop[,c(1:6)]
+offset2 = rbind(newoffset[,c(1:6)])
+# offset2 = cbind(-1.202915, -1.581735, -1.737000, -1.777371, -1.880621, -2.175320)
 
 model1 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = multinomial, data = vgam_dat)
 model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1 + offset(offset2), family = multinomial, data = vgam_dat)
