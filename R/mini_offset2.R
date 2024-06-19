@@ -100,31 +100,22 @@ mf_model <- spectrum_data_f %>%
   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
   filter(year %in% c(1993:2023)) %>% 
   mutate(id.year = factor(year),
-         idx = factor(row_number())) 
-  # group_by(iso3, year) %>% 
-  # mutate(
-  #   # offset = log(tpa) - log(tpa[age_group == "Y045_049"]), 
-  #   # tpa = tpa - tpa[age_group == "Y045_049"],
-  #   tpa = ifelse(age_group == "Y045_049", 0.5, tpa)) %>% 
-  # ungroup()
+         idx = factor(row_number())) %>% 
+  group_by(iso3, year) %>% 
+  mutate(
+    # tpa = tpa - tpa[age_group == "Y045_049"],
+    tpa = ifelse(age_group == "Y045_049", 0.5, tpa)) %>% 
+  ungroup() %>% 
+  filter(iso3 == "BDI", year == 2021)
 
 
-mf_model <- mf_model %>% 
-  filter(
-    (year == 2021 &
-         iso3 == "BDI") |
-    (year == 1993 &
-        iso3 == "BEN")
-    ) %>% 
-  droplevels()
 
 dat2 <- dat %>%
-  filter(survey_id %in% c("BDI2021BBS_FSW", "BEN1993ACA_FSW")) %>%
-  # filter(survey_id == "BDI2021BBS_FSW") %>%
-  # filter(survey_id == "BEN1993ACA_FSW") %>%
   type.convert(as.is = T) %>%
   left_join(mf_model) %>% 
-  droplevels() 
+  # filter(survey_id %in% c("BDI2021BBS_FSW", "BEN1993ACA_FSW")) %>% 
+  filter(survey_id %in% c("BDI2021BBS_FSW")) %>% 
+  droplevels()
 
 dat2$n[is.na(dat2$n)] <- 0
 
@@ -132,7 +123,8 @@ dat2$n[is.na(dat2$n)] <- 0
 
 M_obs <- sparse.model.matrix(~0 + idx, dat2) 
 
-X_stand_in <- sparse.model.matrix(~0 + id.age, mf_model)
+X_stand_in <- sparse.model.matrix(~0 + id.age, dat2) #only where we're filtering down surveys
+# X_stand_in <- sparse.model.matrix(~0 + id.age, mf_model)
 X_stand_in <- X_stand_in[,c(1:6)]
 
 
@@ -141,25 +133,14 @@ Z_age <- sparse.model.matrix(~0 + id.age, mf_model)
 Z_age_observations <- sparse.model.matrix(~0 + id.age, dat2)
 
 observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE)
-observed_x[1,] = observed_x[2,]
-observed_x = matrix(observed_x[1,], ncol = ncol(observed_x))
 
 
 ####### USE THIS TO REPLICATE CURRENT ERROR ######
 observed_totpop <- matrix(dat2$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
-observed_totpop[1,] = observed_totpop[2,]
-newoffset2 <- log(observed_totpop) - log(observed_totpop[,7])
-newoffset2 = matrix(newoffset2[1,], ncol = ncol(newoffset2))
-
-
-newoffset <- matrix(dat2$offset, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
-
-
-
-# logit_totpop <- qlogis(observed_totpop)
+logit_totpop <- qlogis(observed_totpop)
 
 # # To remove logit_totpop this produces a matrix of 0
-newoffset <- matrix(rep(0, nrow(dat2)), ncol = length(unique(mf_model$age_group)), byrow = T)
+logit_totpop <- matrix(rep(0, nrow(dat2)), ncol = length(unique(mf_model$age_group)), byrow = T)
 
 # # Commented out for time being
 # # fake logit_totpop used for VGAM model --> VGAM only needed 6 valyes 
@@ -176,8 +157,7 @@ tmb_int$data <- list(
   
   R_beta = as(diag(1, nrow = (length(unique(dat2$id.age)))-1), "dgTMatrix"),
 
-  # logit_totpop = logit_totpop
-  logit_totpop = newoffset2
+  logit_totpop = logit_totpop
 )
 
 
@@ -189,7 +169,7 @@ tmb_int$par <- list(
 )
 
 tmb_int$random <- c(                          
-  # "beta_0"
+  "beta_0"
 
 
 )
@@ -273,31 +253,22 @@ library(VGAM)
 # # pivot_wider(names_from = age_group, values_from = prop)
 
 vgam_dat <- dat %>%
-  filter(survey_id == "BDI2021BBS_FSW") %>%
-  # filter(survey_id == "BEN1993ACA_FSW") %>% 
-  # filter(survey_id %in%  c("BEN1993ACA_FSW", "BDI2021BBS_FSW")) %>% 
   pivot_wider(names_from = age_group, values_from = n) %>%
-  select(starts_with("Y0")) %>% 
-  duplicate()
+  select(starts_with("Y0"))
 
-vgam_dat <- data.frame(observed_x) %>% 
-  ### Comment out the two lines below if there is more than one survey
-  rownames_to_column() %>% 
-  mutate(rowname = paste0("X", rowname)) %>% 
-  ###
-  # pivot_wider(names_from = rowname, values_from = observed_x)  %>% 
-  select(Y015_019 = X1, Y020_024 = X2, Y025_029 = X3, Y030_034 = X4, Y035_039 = X5, Y040_044 = X6, Y045_049 = X7)
+vgam_dat <- dat2 %>%
+  select(age_group, iso3, survey_id, n) %>% 
+  filter(survey_id %in% c("BDI2021BBS_FSW", "BEN1993ACA_FSW")) %>% 
+  type.convert(as.is = T) %>% 
+  pivot_wider(names_from = age_group, values_from = n) %>%
+  select(starts_with("Y0"))
+
 # mini_offset <- matrix(dat2$tpa, ncol = length(unique(dat2$age_group)), byrow = TRUE)
 # mini_logit_totpop <- qlogis(mini_offset)
 
+# offset2 = cbind(qlogis(0.16), qlogis(0.26), qlogis(0.16), qlogis(0.06), qlogis(0.06), qlogis(0.01))
 
-
-#When running one survey 
-offset2 = rbind(newoffset2[c(1:6)])
-
-# If multiple surveys 
-offset2 = rbind(newoffset2[,c(1:6)])
-
+offset2 = logit_totpop[,c(1:6)]
 
 model1 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = multinomial, data = vgam_dat)
 model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1 + offset(offset2), family = multinomial, data = vgam_dat)
@@ -305,7 +276,7 @@ model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040
 
 multilogitlink(plogis(logit_totpop))
 
-summary(model3)
+summary(model2)
 
 s1 <- summary(model1)
 s2 <- summary(model2)
@@ -316,9 +287,6 @@ data.frame(vglm_no_offest = s1@coefficients,
            TMB_no_offset = sd_report_no_offset[,1]
 )
 
-
-library(nnet)
-multinom(age_group ~ 1 + year * iso , data = new_agedata)
 
 estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
   rownames_to_column() %>% 

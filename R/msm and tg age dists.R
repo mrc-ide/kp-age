@@ -25,6 +25,39 @@ msmtg %>%
   filter(!survey_id == "NAM2019BBS_MSM") %>% 
   mutate(tgw = factor(tgw),
          trans = factor(trans)) %>% 
+  single_year_to_five_year() %>% 
+  group_by(survey_id, iso3, year, trans, age_group) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  group_by(survey_id, iso3, year, trans) %>% 
+  mutate(full_sample = sum(n)) %>% 
+  ungroup() %>%  
+  mutate(estimate = n/full_sample) %>% 
+  # distinct() %>% 
+  # bind_rows(data.frame(survey_id = "MWI2016ACA_MSM", iso3 = "MWI", year = 2016, age = 29, trans = factor(0), estimate = 0, n = 0)) %>% 
+  # bind_rows(data.frame(survey_id = "RWA2015BBS_MSM", iso3 = "MWI", year = 2016, age = 41, trans = factor(0), estimate = 0, n = 0)) %>% 
+  # bind_rows(data.frame(survey_id = "SLE2021BBS_MSM", iso3 = "MWI", year = 2016, age = 49, trans = factor(0), estimate = 0, n = 0)) %>% 
+  # bind_rows(data.frame(survey_id = "UGA2012BBS_MSM", iso3 = "MWI", year = 2016, age = 54, trans = factor(0), estimate = 0, n = 0)) %>% 
+  group_by(survey_id, age_group) %>% 
+  mutate(normalised = estimate/estimate[trans == 0]) %>% 
+  mutate(log_or = log((estimate/(1-estimate))/(estimate[trans == 0]/(1 - estimate[trans == 0])))) %>% 
+  ungroup() %>% 
+  select(-n) %>% 
+  distinct() %>% 
+  mutate(agegroup = to_int(age_group)) %>% 
+  filter(trans == 1) %>% 
+  ggplot() +
+  # geom_boxplot(aes(x = age_group, y = normalised)) +
+  # geom_boxplot(aes(x = age_group, y = log_or)) +
+  geom_line(aes(x = agegroup, y = log_or, color = survey_id)) +
+  # geom_line(aes(x = agegroup, y = normalised, color = survey_id)) +
+  geom_hline(yintercept = log(1), linewidth = 0.5) +
+  moz.utils::standard_theme() +
+  labs(y = "TGW:MSM Log OR", x = "Age Group") +
+  theme(aspect.ratio=1) + 
+  theme(axis.text.x = element_text(angle = 45))
+  # faceta wrap(~survey_id)
+  
   ggplot() + 
   geom_density(aes(x = age, color = trans)) +
   facet_wrap(~survey_id) 

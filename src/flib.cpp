@@ -30,7 +30,9 @@ Type objective_function<Type>::operator() ()
   DATA_SPARSE_MATRIX(X_stand_in);
   DATA_SPARSE_MATRIX(R_beta);
   
-  // DATA_SCALAR(rankdef_R_spatial);
+  DATA_SCALAR(rankdef_R_spatial);
+  // DATA_MATRIX(Z_yeariso);
+  // PARAMETER_VECTOR(interaction);
   
   DATA_VECTOR(logit_totpop);
   
@@ -61,21 +63,27 @@ Type objective_function<Type>::operator() ()
   // 
   // PARAMETER_ARRAY(eta3);
   // PARAMETER(log_prec_eta3);
-  // PARAMETER(logit_eta3_phi_age);
-  // // PARAMETER(lag_logit_eta3_phi_age);
+  // // PARAMETER(log_sigma_eta3);
+  // // PARAMETER(logit_eta3_phi_age);
+  // PARAMETER(lag_logit_eta3_phi_age);
   // 
+  // // Replace sigma_eta3 with these two lines if you want log precision prior 
   // Type prec_eta3 = exp(log_prec_eta3);
-  // nll -= dgamma(prec_eta3, Type(1), Type(2000), true);
+  // nll -= dgamma(prec_eta3, Type(1), Type(20000), true);
+  // 
+  // // Type sigma_eta3 = exp(log_sigma_eta3);
+  // // nll -= dnorm(sigma_eta3, Type(0), Type(2.5), true) + log_sigma_eta3;
   // 
   // // nll -= dnorm(logit_eta3_phi_age, Type(3.66116349), Type(0.09653723), true);
   // 
-  // Type eta3_phi_age(exp(logit_eta3_phi_age)/(1+exp(logit_eta3_phi_age)));
-  // //
-  // nll -= log(eta3_phi_age) +  log(1 - eta3_phi_age); // Jacobian adjustment for inverse logit'ing the parameter...
-  // nll -= dbeta(eta3_phi_age, Type(0.5), Type(0.5), true); // 69-72 remove if swapping to lag logit instead of logit
+  // // Commented out in favour of lag logit
+  // // Type eta3_phi_age(exp(logit_eta3_phi_age)/(1+exp(logit_eta3_phi_age)));
+  // // //
+  // // nll -= log(eta3_phi_age) +  log(1 - eta3_phi_age); // Jacobian adjustment for inverse logit'ing the parameter...
+  // // nll -= dbeta(eta3_phi_age, Type(0.5), Type(0.5), true); // 69-72 remove if swapping to lag logit instead of logit
   // 
-  // // nll -=dnorm(lag_logit_eta3_phi_age, Type(0), Type(sqrt(1/0.15)), true);
-  // // Type eta3_phi_age = 2*exp(lag_logit_eta3_phi_age)/(1+exp(lag_logit_eta3_phi_age))-1;
+  // nll -=dnorm(lag_logit_eta3_phi_age, Type(0), Type(sqrt(1/0.15)), true);
+  // Type eta3_phi_age = 2*exp(lag_logit_eta3_phi_age)/(1+exp(lag_logit_eta3_phi_age))-1;
   // 
   // 
   // nll += SEPARABLE(AR1(Type(eta3_phi_age)), GMRF(R_spatial))(eta3);
@@ -89,33 +97,42 @@ Type objective_function<Type>::operator() ()
   // vector<Type> eta3_v(eta3);
 
 
-  // ///////////// Time * Age
-  // DATA_SPARSE_MATRIX(Z_periodage);
-  // // DATA_SPARSE_MATRIX(R_period);
-  // 
-  // PARAMETER_ARRAY(eta2);
-  // PARAMETER(log_prec_eta2);
+  ///////////// Time * Age
+  DATA_SPARSE_MATRIX(Z_periodage);
+  // DATA_SPARSE_MATRIX(R_period);
+
+  PARAMETER_ARRAY(eta2);
+  PARAMETER(log_prec_eta2);
   // PARAMETER(logit_eta2_phi_age);
   // PARAMETER(logit_eta2_phi_period)
-  // 
-  //   //
-  //   Type prec_eta2 = exp(log_prec_eta2);
-  // nll -= dgamma(prec_eta2, Type(1), Type(2000), true);
-  // 
-  // // nll -= dnorm(logit_eta3_phi_age, Type(3.66116349), Type(0.09653723), true);
-  // 
+  PARAMETER(lag_logit_eta2_phi_age);
+  PARAMETER(lag_logit_eta2_phi_period)
+
+    //
+    Type prec_eta2 = exp(log_prec_eta2);
+  nll -= dgamma(prec_eta2, Type(1), Type(20000), true);
+
+  // nll -= dnorm(logit_eta3_phi_age, Type(3.66116349), Type(0.09653723), true);
+
+  // Replaced this with lag logit below
   // Type eta2_phi_age(exp(logit_eta2_phi_age)/(1+exp(logit_eta2_phi_age)));
   // nll -= log(eta2_phi_age) +  log(1 - eta2_phi_age); // Jacobian adjustment for inverse logit'ing the parameter...
   // nll -= dbeta(eta2_phi_age, Type(0.5), Type(0.5), true);
-  // 
-  // 
+
+  nll -=dnorm(lag_logit_eta2_phi_age, Type(0), Type(sqrt(1/0.15)), true);
+  Type eta2_phi_age = 2*exp(lag_logit_eta2_phi_age)/(1+exp(lag_logit_eta2_phi_age))-1;
+
+// Replaced this with lag logit below
   // Type eta2_phi_period(exp(logit_eta2_phi_period)/(1+exp(logit_eta2_phi_period)));
   // nll -= log(eta2_phi_period) +  log(1 - eta2_phi_period); // Jacobian adjustment for inverse logit'ing the parameter...
   // nll -= dbeta(eta2_phi_period, Type(0.5), Type(0.5), true);
-  // 
-  // nll += SEPARABLE(AR1(Type(eta2_phi_age)), AR1(Type(eta2_phi_period)))(eta2);
-  // 
-  // vector<Type> eta2_v(eta2);
+
+  nll -=dnorm(lag_logit_eta2_phi_period, Type(0), Type(sqrt(1/0.15)), true);
+  Type eta2_phi_period = 2*exp(lag_logit_eta2_phi_period)/(1+exp(lag_logit_eta2_phi_period))-1;
+
+  nll += SEPARABLE(AR1(Type(eta2_phi_age)), AR1(Type(eta2_phi_period)))(eta2);
+
+  vector<Type> eta2_v(eta2);
   
   
   // // ///////////// Survey Age interaction ///////////
@@ -155,13 +172,15 @@ Type objective_function<Type>::operator() ()
   /////////// Multinomial model --> Logit is our link 
   
   vector<Type> logit_p(
-      X_stand_in * beta_0
+      X_stand_in * beta_0 
+  // + Z_yeariso * interaction
     // + Z_spaceage * eta3_v * sqrt(1/prec_eta3)
-    // + Z_periodage * eta2_v * sqrt(1/prec_eta2)
+    // + Z_spaceage * eta3_v * sqrt(1/prec_eta3)
+    + Z_periodage * eta2_v * sqrt(1/prec_eta2)
   );
   
   vector<Type> logit_p2(M_obs*logit_p +
-                        logit_totpop    
+                       logit_totpop
     );
                           // + Z_survage * eta_surv_v * sqrt(1/prec_eta_surv));
 

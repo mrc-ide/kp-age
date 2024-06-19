@@ -127,6 +127,7 @@ tmb_coefs <- data.frame(sd_report,
   mutate(source = "TMB")
 
 ### Comparison 
+png("multinom plots/one study.png", width = 600, height = 400)
 addis %>% 
   select(age_group, odds, odds_ratio) %>% 
   mutate(source = "HandCalc") %>% 
@@ -136,6 +137,8 @@ addis %>%
   ggplot(aes(x = age_group)) +
   geom_point(aes(y = odds_ratio, color = source), position = position_jitter(w = 0.3, h = 0)) + 
   # geom_pointrange(aes(y = odds_ratio, ymin = lowerCI, ymax = upperCI, color = source), linewidth =0.4, alpha = 0.8, position = position_jitter(w = 0.4, h = 0)) + 
-  moz.utils::standard_theme()
+  moz.utils::standard_theme() +
+  labs(x = "Age Group", y = "OR")
+dev.off()
 
 # They match quite well where we have area set to Addis Ababa, however weird things happen if you filter basic_age down to area ==  "Adama"

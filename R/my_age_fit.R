@@ -21,6 +21,129 @@ single_year_to_five_year <- function (df, fifteen_to_49 = TRUE)
   }
 }
 
+# aggregate_data <- readxl::read_xlsx("~/Downloads/aggregate_agedat.xlsx") %>% 
+#   rename(survey_id = study_id) %>% 
+#   separate_survey_id() %>% 
+#   mutate(age_group2 = str_remove(age_group, "Y")) %>%
+#   separate(age_group2, into = c("age_start", "age_end"), sep = "_", convert = TRUE, remove = T)
+# 
+# df <- naomi::get_age_groups() %>%
+#   filter(age_group_sort_order %in% 18:24) %>%
+#   rowwise() %>%
+#   mutate(span = list(age_group_start:(age_group_start + age_group_span - 1)),
+#          x=1) %>%
+#   unnest(span) %>%
+#   group_by(age_group) %>%
+#   mutate(idx = cur_group_id(),
+#          span = span - 14) %>%
+#   group_by(span) %>%
+#   mutate(idy = cur_group_id()) 
+# 
+# sparseMatrix(i = df$idx, j = df$idy, x = 1)
+# 
+# cleanag <- aggregate_data %>% 
+#   mutate(n = ifelse(is.na(n), prop*sum, n),
+#          n = ifelse(is.na(n), prop, n)) %>% 
+#   filter(!is.na(age_start)) %>% 
+#   mutate(age_end = ifelse(is.na(age_end), 49, age_end),
+#          area = ifelse(is.na(area),iso3, area)) %>% 
+#   filter(area == iso3) %>% 
+#   select(kp, survey_id, iso3, year, age_group, age_start, age_end, n) %>% 
+#   filter(!(age_start > 45 | age_start < 15)) %>% 
+#   arrange(age_start, age_end)
+# 
+# cleanag_matrix <-  cleanag 
+#   # rowwise() %>% 
+#   # mutate(group_span = (age_end - age_start + 1),
+#   #        span = list(age_start:(age_start + group_span - 1)),
+#   #                          x=1) %>%
+#   # unnest(span) %>%
+#   # group_by(age_group) %>%
+#   # mutate(idx = cur_group_id(),
+#   #        span = span - 14) %>%
+#   # group_by(span) %>%
+#   # mutate(idy = cur_group_id()) 
+# 
+# # aggregate <- sparseMatrix(i = cleanag_matrix$idx, j = cleanag_matrix$idy, x = 1)
+# 
+# age_min <- min(cleanag_matrix$age_start)
+# age_max <- max(cleanag_matrix$age_end)
+# 
+# # Step 2: Initialize an empty sparse matrix
+# # The number of rows is the number of age groups, and the number of columns is the range of ages
+# mat <- Matrix(0, nrow = nrow(cleanag_matrix), ncol = age_max - age_min + 1,
+#               dimnames = list(cleanag_matrix$age_group, paste0(age_min:age_max)))
+# 
+# # Step 3: Fill the matrix
+# for (i in 1:nrow(cleanag_matrix)) {
+#   start_index <- cleanag_matrix$age_start[i] - age_min + 1
+#   end_index <- cleanag_matrix$age_end[i] - age_min + 1
+#   mat[i, start_index:end_index] <- 1
+# }
+#   #        age_group2 = case_when(age_group %in% c("Y013_019", "Y014_019", "Y015_019", "Y015_020", "Y018_019", "Y018_020") ~ "Y015_019",
+#   #                               age_group %in% c("Y018_021", "Y018_024", "Y020_024", "Y021_024", "Y021_025") ~ "Y020_024",
+#   #                               age_group %in% c("Y024_029", "Y025_029", "Y025_030", "Y026_030") ~ "Y025_029",
+#   #                               age_group == "Y015_024" ~ "Y015_024",
+#   #                               age_group == "Y025_034" ~ "Y025_034",
+#   #                               age_group == "Y020_029" ~ "Y020_029",
+#   #                               age_group == "Y025_049" ~ "Y025_049",
+#   #                               age_group == "Y030_034" ~ "Y030_034",
+#   #                               age_group == "Y030_039" ~ "Y030_039",
+#   #                               age_group %in% c("Y030_049", "Y031_", "Y030_49") ~ "Y030_049",
+#   #                               age_group == "Y035_039" ~ "Y035_039",
+#   #                               age_group == "Y035_044" ~ "Y035_044",
+#   #                               age_group == "Y035_065" ~ "Y035_049",
+#   #                               age_group %in% c("Y040_044", "Y040_045") ~ "Y040_044",
+#   #                               age_group %in% c("Y040_049", "Y049_049") ~ "Y040_049",
+#   #                               age_group %in% c("Y045_049", "Y045_054") ~ "Y045_049")) %>% 
+#   # rename(oldage = age_group,
+#   #        age_group = age_group2) 
+#   # filter(age_group  %in% c("Y015_019", "Y020_024", "Y025_029", "Y030_034", "Y035_039", "Y040_044", "Y045_049")) %>% #5-year age groups
+# 
+# 
+# twoage <- cleanag %>% 
+#   mutate(age_group = case_when(age_group %in% c("Y015_019", "Y015_024", "Y020_024") ~ "Y015_024",
+#                                age_group %in% c("Y025_029", "Y025_034", "Y025_049", "Y030_034", "Y030_039", "Y030_049", "Y035_039", "Y035_044", "Y040_044", "Y040_049", "Y045_049") ~ "Y025_049"))%>% 
+#   select(-oldage) %>% 
+#   mutate(year = factor(year)) %>% 
+#   filter(area == iso3) %>% 
+#   group_by(survey_id, iso3, year, kp, age_group) %>% 
+#   summarise(n = sum(n)) %>% 
+#   ungroup() %>% 
+#   filter(!is.na(age_group))
+# 
+# tenyr <- cleanag %>% 
+#   filter(age_group  %in% c("Y015_019", "Y020_024", "Y025_029", "Y030_034", "Y035_039", "Y040_044", "Y045_049")) %>% 
+#   mutate(age_group = case_when (age_group %in% c("Y015_019") ~ "Y015_019",
+#                                 age_group %in% c("Y020_024", "Y025_029") ~ "Y020_029",
+#                                 age_group %in% c("Y030_034", "Y035_039", "Y040_044", "Y045_049", "40_49") ~ "Y030_049")) %>% 
+#   bind_rows(cleanag %>% 
+#               filter(age_group  %in% c("Y020_029", "Y030_049"))) %>% #10-year age groups
+#               group_by(survey_id) %>% 
+#               filter(area == iso3) %>% 
+#               ungroup() %>% 
+#   select(-oldage) %>% 
+#   mutate(year = factor(year)) %>% 
+#   group_by(survey_id, age_group) %>% 
+#   mutate(n = sum(n)) %>% 
+#   ungroup()
+#   
+# fsw_ag <- tenyr %>% filter(kp == "FSW") %>% 
+#   # filter(!counter<5) %>% 
+#   select(age_group, iso3, year, survey_id, n)  %>% 
+#   distinct()  %>% 
+#   group_by(survey_id) %>% 
+#   mutate(counter = length(iso3)) %>% 
+#   ungroup() %>% 
+#   filter(!counter == 1)
+# 
+# fsw_ag <- twoage %>% 
+#   filter(kp == "FSW") %>% 
+#   select(age_group, iso3, year, survey_id, n)  %>% 
+#   distinct()  %>% 
+#   group_by(survey_id) %>% 
+#   mutate(counter = length(iso3)) %>% 
+#   ungroup() 
 
 dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/fullweightedandunweighteddata_0210.rds") %>%
   filter(vars == "age") %>%
@@ -28,25 +151,36 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
   rename(age = category) %>%
   moz.utils::separate_survey_id() %>%
   filter(kp == "FSW", 
+         # kp == "PWID",
+         # kp == "MSM",
          age %in% 15:49) %>%
   type.convert(as.is = T) %>%
   filter(!is.na(age)) %>%
   select(iso3, survey_id, year, age, n) %>% 
-  # single_year_to_five_year(T) %>%
-  mutate(age_group = factor(age)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
+  single_year_to_five_year(T) %>%
+  mutate(age_group = factor(age_group)) %>% #change to factor(age) for single year of age / factor(age_group) for age groups. 
+  # mutate(age_group = case_when (age_group %in% c("Y015_019") ~ "Y015_019",
+  #                               age_group %in% c("Y020_024", "Y025_029") ~ "Y020_029",
+  #                               age_group %in% c("Y030_034", "Y035_039", "Y040_044", "Y045_049", "40_49") ~ "Y030_049")) %>% 
+ # mutate(age_group = case_when(age_group %in% c("Y015_019", "Y015_024", "Y020_024") ~ "Y015_024",
+                                      # age_group %in% c("Y025_029", "Y025_034", "Y025_049", "Y030_034", "Y030_039", "Y030_049", "Y035_039", "Y035_044", "Y040_044", "Y040_049", "Y045_049") ~ "Y025_049")) %>% 
   group_by(iso3, survey_id, year, age_group) %>%
   summarise(n = sum(n)) %>% 
   ungroup() %>% 
   mutate(year = factor(year))
 
+dat <- dat %>% 
+  bind_rows(fsw_ag)
+
 dat <- crossing(age_group = dat$age_group,
                 select(dat, iso3, survey_id, year)) %>%
   arrange(survey_id) %>%
   # filter(!survey_id %in% c("ZAF1998ACA_FSW")) %>%
-  filter(!survey_id %in% c("ZAF1998ACA_FSW", "ETH2020ACA_FSW")) %>%
+  # filter(!survey_id %in% c("ZAF1998ACA_FSW", "ETH2020ACA_FSW")) %>%
   left_join(dat)
 
-
+# dat <- dat %>%
+#   filter(survey_id == "NAM2019BBS_FSW")
 
 # dat <- dat %>%
 #   select(iso3, survey_id, year, age, estimate, method) %>%
@@ -82,11 +216,29 @@ dat <- crossing(age_group = dat$age_group,
 # For age_groups
 spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f.rds") %>% 
   filter(year %in% c(1993:2023)) %>% 
-  ungroup()
+  ungroup() 
+  # mutate(age_group = case_when (age_group %in% c("Y015_019") ~ "Y015_019",
+  #                               age_group %in% c("Y020_024", "Y025_029") ~ "Y020_029",
+  #                               age_group %in% c("Y030_034", "Y035_039", "Y040_044", "Y045_049", "40_49") ~ "Y030_049")) %>% 
+  # mutate(age_group = case_when(age_group %in% c("Y015_019", "Y015_024", "Y020_024") ~ "Y015_024",
+  #                              age_group %in% c("Y025_029", "Y025_034", "Y025_049", "Y030_034", "Y030_039", "Y030_049", "Y035_039", "Y035_044", "Y040_044", "Y040_049", "Y045_049") ~ "Y025_049")) %>%
+  # group_by(iso3, year, age_group) %>%
+  # summarise(tpa = sum(tpa)) %>% 
+  # ungroup()  
 
-# For single year age
-spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds") %>%
-  ungroup()
+# # For single year age
+# spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds") %>%
+#   ungroup()
+# 
+# # For male single year of age
+# spectrum_data_m <- readRDS("~/Downloads/spectrum_data_m.rds") %>% 
+#   ungroup()
+# 
+# # For PWID single year of age
+# spectrum_data_pwid <- readRDS("~/Downloads/spectrum_data_pwid.rds") %>% 
+#   ungroup() %>% 
+#   rename(age_group = age)
+
 # spec_paths <- list.files("~/Imperial College London/HIV Inference Group - WP - Documents/Data/Spectrum files/2023 final shared/SSA", full.names = T)
 # 
 # spectrum_data <- lapply(spec_paths, naomi::extract_pjnz_naomi)
@@ -98,35 +250,45 @@ spectrum_data_f <- readRDS("~/Downloads/spectrum_data_f_il.rds") %>%
 #   bind_rows(nga_spectrum_dat) %>%
 #   filter(age %in% 15:49,
 #          year > 1992,
-#          sex == "female") %>%
+#          sex == "male") %>%
 #   # single_year_to_five_year(T) %>%
-#   mutate(age_group = age) %>% 
+#   mutate(age_group = age) %>%
 #   group_by(iso3, sex, year, age_group) %>%
 #   summarise(totpop = sum(totpop)) %>%
 #   group_by(iso3, sex, year) %>%
 #   mutate(tpa = totpop/sum(totpop)) %>%
-#   select(-totpop) %>% 
+#   select(-totpop) %>%
 #   ungroup()
+# 
+# spectrum_data_m <- spectrum_data_f
+
+# saveRDS(spectrum_data_m, "~/Downloads/spectrum_data_m.rds")
 # 
 # # saveRDS(spectrum_data_f, "~/Downloads/spectrum_data_f.rds")
 # saveRDS(spectrum_data_f, "~/Downloads/spectrum_data_f_il.rds")
 
-# spectrum_data_m <- spectrum_data %>%
+# spectrum_data_pwid <- spectrum_data %>%
 #   bind_rows() %>%
 #   bind_rows(nga_spectrum_dat) %>%
 #   filter(age %in% 15:49,
-#          year > 1992,
-#          sex == "male") %>%
-#   single_year_to_five_year(T) %>%
-#   group_by(iso3, sex, year, age_group) %>%
+#          year > 1992) %>% 
+#          # sex == "male") %>%
+#   # single_year_to_five_year(T) %>%
+#   # group_by(iso3, sex, year, age_group) %>%
+#   group_by(iso3, year, age) %>%
 #   summarise(totpop = sum(totpop)) %>%
-#   group_by(iso3, sex, year) %>%
+#   # group_by(iso3, sex, year) %>%
+#   group_by(iso3, year) %>%
 #   mutate(tpa = totpop/sum(totpop)) %>%
 #   select(-totpop)
+# 
+# saveRDS(spectrum_data_pwid, "~/Downloads/spectrum_data_pwid.rds")
+# 
 # spectrum_data_grouped <- readRDS("~/Downloads/specgrouped.rds")
 
 # mf_model w/year
 mf_model <- spectrum_data_f %>%
+# mf_model <- spectrum_data_m %>%
   distinct(age_group, iso3, year, tpa) %>% 
   ungroup() %>%
   mutate(id.age =  factor(to_int(age_group))
@@ -135,18 +297,13 @@ mf_model <- spectrum_data_f %>%
   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id, everything()) %>% mutate(id.iso3 = factor(row_number()))) %>% 
   filter(year %in% c(1993:2023)) %>% 
   mutate(id.year = factor(year),
-         idx = factor(row_number()))
-
-# defunct mf_model
-# mf_model2 <- crossing(iso3 = ssa_iso3(),
-#                      age_group = unique(spectrum_data_f$age_group)) %>%
-#   mutate(age_group = factor(age_group),
-#          id.age =  factor(to_int(age_group)),
-#          # id.iso3 = factor(as.numeric(factor(iso3))),            
-#          idx = factor(row_number())) %>% 
-#   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3 = area_id) %>% st_drop_geometry() %>% mutate(id.iso3 = factor(row_number()))) 
-#   # filter(!iso3== "NGA") %>% 
-#   # mutate(is15 = ifelse(age_group == "Y015_019", 1, 0))
+         idx = factor(row_number())) %>% 
+  left_join(spectrum_data_offsets) #made in local_global_offset.R
+  # group_by(iso3, year) %>% 
+  # # mutate(
+  # #   # tpa = tpa - tpa[age_group == "Y045_049"],
+  # #        tpa = ifelse(age_group == "Y045_049", 0.5, tpa)) %>% 
+  # ungroup()
 
 
 
@@ -156,54 +313,36 @@ dat2 <- dat %>%
 
 dat2$n[is.na(dat2$n)] <- 0
 
-# dat2 <- dat2 %>% 
-#   group_by(survey_id) %>% 
-#   mutate(pa = n/sum(n)) 
-# 
-# 
-# sd(dat2$tpa)
-# sd(dat2$pa)
-# 
-# dat2 %>% 
-#   left_join(moz.utils::region()) %>% 
-# ggplot() + 
-#   geom_point(aes(x = tpa, y = pa, color = region)) +
-#   ggpmisc::stat_poly_eq(aes(x = tpa, y = pa))
 
+# TMB Data objects
 
-
-# How does M_obs know the size of mf_model? - Ans: idx comes from mf_model
 M_obs <- sparse.model.matrix(~0 + idx, dat2) 
 Z_spatial <- sparse.model.matrix(~0 + id.iso3, mf_model)
 
 
 X_stand_in <- sparse.model.matrix(~0 + id.age, mf_model)
-
-# X_stand_in <- X_stand_in[,c(2:7)]
+# X_stand_in[,1] <- 0
+X_stand_in <- X_stand_in[,c(1:6)]
 
 ##### No splines
 Z_age <- sparse.model.matrix(~0 + id.age, mf_model)
 
-##### Yes splines
-Z_age <- sparse.model.matrix(~0 + id.age, mf_model)    ##n observations long (this time from mf_model), n cols by age group
-x <- 0:34
-k <- seq(-15, 50, by = 5)
-spline_mat <- splines::splineDesign(k, x, ord = 4)
-spline_mat <- as(spline_mat, "sparseMatrix")
-Z_age <- Z_age %*% spline_mat
-X_stand_in <- X_stand_in %*% spline_mat
+# ##### Yes splines
+# Z_age <- sparse.model.matrix(~0 + id.age, mf_model)    ##n observations long (this time from mf_model), n cols by age group
+# x <- 0:34
+# k <- seq(-15, 50, by = 5)
+# spline_mat <- splines::splineDesign(k, x, ord = 4)
+# spline_mat <- as(spline_mat, "sparseMatrix")
+# Z_age <- Z_age %*% spline_mat
+# X_stand_in <- X_stand_in %*% spline_mat
 
-Z_spaceage <-  mgcv::tensor.prod.model.matrix(list(Z_spatial, Z_age))
-
-
-# mf_model <- mf_model %>% 
-#   mutate(year = factor(year))
-
-## Time x age 
+# Z_spaceage <-  mgcv::tensor.prod.model.matrix(list(Z_spatial, Z_age)) #wrong way around
+Z_spaceage <-  mgcv::tensor.prod.model.matrix(list(Z_age, Z_spatial))
 
 Z_period <- sparse.model.matrix(~0 + id.year, mf_model)
 
-Z_periodage <-  mgcv::tensor.prod.model.matrix(list(Z_period, Z_age))
+# Z_periodage <-  mgcv::tensor.prod.model.matrix(list(Z_period, Z_age)) #wrong way around
+Z_periodage <-  mgcv::tensor.prod.model.matrix(list(Z_age, Z_period)) 
 dim(Z_periodage)
 dim(X_stand_in)
 
@@ -211,8 +350,10 @@ dim(X_stand_in)
 Z_survey <- sparse.model.matrix(~0 + survey_id, dat2)
 
 Z_age_observations <- sparse.model.matrix(~0 + id.age, dat2)
-Z_age_observations <- Z_age_observations %*% spline_mat
-Z_survage <-  mgcv::tensor.prod.model.matrix(list(Z_survey, Z_age_observations))
+# Z_age_observations <- Z_age_observations %*% spline_mat
+# Z_survage <-  mgcv::tensor.prod.model.matrix(list(Z_survey, Z_age_observations)) 
+
+Z_survage <-  mgcv::tensor.prod.model.matrix(list(Z_age_observations, Z_survey)) 
 
 R_surv <- as(diag(1, nrow = length(unique(dat2$survey_id))), "dgTMatrix")
 
@@ -220,11 +361,22 @@ observed_x <- matrix(dat2$n, nrow = length(unique(dat2$survey_id)), byrow = TRUE
 
 
 # To produce logit_totpop with real values
-observed_totpop <- matrix(mf_model$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
-logit_totpop <- qlogis(observed_totpop)
+# observed_totpop <- matrix(mf_model$tpa, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
+# logit_totpop <- qlogis(observed_totpop)
+
+observed_totpop <- matrix(dat2$tpa2020, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
+newoffset2 <- log(observed_totpop) - log(observed_totpop[,7]) # Log-odds using the 7th age group as the base 
+
+# To remove offset
+newoffset2 <- log(observed_totpop) - log(observed_totpop)
+
+# SImulated logit_totpop
+# logit_totpop <- qlogis(rdirichlet(1209, (seq(1,7,1))))
+# observed_totpop <- matrix(mf_model$tpa2, ncol = length(unique(mf_model$age_group)), byrow = TRUE)
+# logit_totpop <- qlogis(observed_totpop)
 
 # To remove logit_totpop this produces a matrix of 0
-logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
+# logit_totpop <- matrix(rep(0, nrow(mf_model)), ncol = length(unique(mf_model$age_group)), byrow = T)
 
 tmb_int <- list()
 
@@ -232,60 +384,70 @@ tmb_int$data <- list(
   M_obs = M_obs,
   observed_x = observed_x,
   X_stand_in = X_stand_in,
-  R_beta = dfertility::make_rw_structure_matrix(ncol(X_stand_in), 1, adjust_diagonal = TRUE),  ##captures relationship between age
+  # R_beta = dfertility::make_rw_structure_matrix(ncol(X_stand_in), 1, adjust_diagonal = TRUE),  ##captures relationship between age
+  # R_beta = as(diag(1, nrow = length(unique(dat2$id.age))), "dgTMatrix"), ## we're only estimating 6 coefficients so commenting it out 
+  # 
+  R_beta = as(diag(1, nrow = (length(unique(dat2$id.age)))-1), "dgTMatrix"),
   
-  logit_totpop = logit_totpop,
-  
-  R_survey = as(diag(1, nrow = length(unique(dat$survey_id))), "dgCMatrix"),
-  
+  # Z_yeariso = Z_yeariso,
+  # logit_totpop = newoffset2
+  logit_totpop = as.vector(t(newoffset2)),
+  # 
+  # R_survey = as(diag(1, nrow = length(unique(dat$survey_id))), "dgCMatrix"),
+  # 
+  # 
   Z_spatial = Z_spatial,
   R_spatial = dfertility::make_adjacency_matrix(read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% st_make_valid(), 0),
-  
+
   Z_spaceage = Z_spaceage,
-  
-  # Z_period = Z_period,
-  # R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
+  # 
+  Z_period = Z_period,
+  R_period = dfertility::make_rw_structure_matrix(ncol(Z_period), 1, adjust_diagonal = TRUE),
   Z_periodage = Z_periodage,
-  
-  Z_survage = Z_survage,
-  R_surv = R_surv,
-  
+  # 
+  # # Z_survage = Z_survage,
+  # # R_surv = R_surv,
+  # 
   rankdef_R_spatial = 1
 )
+
 
 
 tmb_int$par <- list( 
   beta_0 = rep(0, ncol(X_stand_in)),
   
-  log_prec_rw_beta = 0,
-  lag_logit_phi_beta = 0,
+  # log_prec_rw_beta = 0
+  # lag_logit_phi_beta = 0
   
-  eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
-  log_prec_eta3 = 0,
-  logit_eta3_phi_age = 0,
+  # eta3 = array(0, c(ncol(Z_spatial), ncol(Z_age))),
+  # log_prec_eta3 = 0,
+  # # log_sigma_eta3 = 0,
+  # # logit_eta3_phi_age = 0
   # lag_logit_eta3_phi_age = 0
-  
-  logit_eta2_phi_age = 0,
+  # 
+  # logit_eta2_phi_age = 0,
+  lag_logit_eta2_phi_age = 0,
   eta2 = array(0, c(ncol(Z_period), ncol(Z_age))),
   log_prec_eta2 = 0,
-  logit_eta2_phi_period = 0,
-  # 
-  eta_surv = array(0, c(ncol(Z_survey), ncol(Z_age))),
-  log_prec_eta_surv = 0,
-  logit_eta_surv_phi_age = 0
+  # logit_eta2_phi_period = 0
+  lag_logit_eta2_phi_period = 0
+  #
+  # eta_surv = array(0, c(ncol(Z_survey), ncol(Z_age))),
+  # log_prec_eta_surv = 0,
+  # logit_eta_surv_phi_age = 0
   
 )
 
 tmb_int$random <- c(                          
   "beta_0",
-  "eta3",
-  "eta2",
-  "eta_surv"
+  # "eta3"
+  "eta2"
+  # "eta_surv"
 
 
 )
 
-setwd("~/Documents/Github/kp-age")
+# setwd("~/Documents/Github/kp-age")
 
 tmb_unload <- function(name) {   
   ldll <- getLoadedDLLs()   
@@ -317,6 +479,7 @@ f <- parallel::mcparallel({TMB::MakeADFun(data = tmb_int$data,
 if(is.null(parallel::mccollect(f)[[1]])) {
   stop("TMB model is invalid. This is most likely an indexing error e.g. iterating over dimensions in an array that do not exist. Check mf model object")
 }
+
 
 
 obj <-  TMB::MakeADFun(data = tmb_int$data,
@@ -376,20 +539,78 @@ estimated_mf <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(uni
   
 
 
-dat3 <- dat2 %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>% mutate(id.age = as.numeric(id.age)) 
+dat3 <- dat2 %>% group_by(survey_id) %>% mutate(pa = n/sum(n)) %>% ungroup() %>% mutate(id.age = as.numeric(id.age)) %>% 
+  mutate(age_group = id.age + 14,
+         year = factor(year))
 
+
+# Offset faff
+# otheroffset <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
+#   rownames_to_column() %>%
+#   rename(age_group = rowname) %>%
+#   type.convert(as.is = T) %>%
+#   rename(estimate = `matrix.rowMeans.fit.sample.p_norm...nrow...length.unique.dat.age_group....`) %>%
+#   left_join(
+#     data.frame(matrix(int[1,], nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
+#       rownames_to_column() %>%
+#       rename(age_group = rowname) %>%
+#       type.convert(as.is = T) %>%
+#       rename(lower = `matrix.int.1.....nrow...length.unique.dat.age_group....ncol...length.unique.dat.survey_id....`)) %>%
+#   left_join(
+#     data.frame(matrix(int[2,], nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
+#       rownames_to_column() %>%
+#       rename(age_group = rowname) %>%
+#       type.convert(as.is = T) %>%
+#       rename(upper = `matrix.int.2.....nrow...length.unique.dat.age_group....ncol...length.unique.dat.survey_id....`))
+# 
+# nooffset <- data.frame(matrix(rowMeans(fit$sample$p_norm), nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
+#   rownames_to_column() %>%
+#   rename(age_group = rowname) %>%
+#   type.convert(as.is = T) %>%
+#   rename(estimate = `matrix.rowMeans.fit.sample.p_norm...nrow...length.unique.dat.age_group....`) %>%
+#   left_join(
+#     data.frame(matrix(int[1,], nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
+#       rownames_to_column() %>%
+#       rename(age_group = rowname) %>%
+#       type.convert(as.is = T) %>%
+#       rename(lower = `matrix.int.1.....nrow...length.unique.dat.age_group....ncol...length.unique.dat.survey_id....`)) %>%
+#   left_join(
+#     data.frame(matrix(int[2,], nrow = length(unique(dat$age_group)), ncol = length(unique(dat$survey_id)), byrow = T)) %>%
+#       rownames_to_column() %>%
+#       rename(age_group = rowname) %>%
+#       type.convert(as.is = T) %>%
+#       rename(upper = `matrix.int.2.....nrow...length.unique.dat.age_group....ncol...length.unique.dat.survey_id....`))
+# 
+# withoffset %>%
+#   mutate(type = "Offset") %>%
+#   bind_rows(nooffset %>% mutate(type = "No offset")) %>%
+#   bind_rows(otheroffset %>% mutate(type = "Other Offset")) %>% 
+#   # bind_rows(no_tpa2 %>% mutate(type = "No genpop")) %>%
+# ggplot() +
+#     geom_line(aes(x = age_group, y = estimate, color = type))
+# 
+# dat2 %>%
+#   mutate(id.age = as.numeric(id.age)) %>%
+#   ggplot() +
+#   geom_line(aes(x = id.age, y = tpa1), color = "cornflowerblue") +
+#   geom_line(aes(x = id.age, y = tpa2), color = "darkgreen") +
+#   geom_hline(yintercept = 0, color = "darkred") +
+#   labs(y = "totpop_dist", x = "age_group")
+#     
+  
 
 estimated_mf %>%
-  mutate(year = factor(year)) %>% 
+  mutate(year = factor(year)) %>%
   ggplot(aes(x=age_group + 14, group = survey_id)) + 
-  geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = id.year), show.legend = F, size = 0.7, alpha = 0.6) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = year), alpha = 0.75) +  
-  geom_line(aes(y = mean, color = year), show.legend = F) +
-  facet_wrap(~iso3) +
+  # geom_point(data = (dat3 %>% mutate(age = as.integer(age_group))), aes(x = age, y = pa, color = id.year), show.legend = F, size = 0.7, alpha = 0.6) +
+  geom_point(data = (dat3), aes(x = id.age+14, y = pa, color = survey_id), show.legend = F, size = 0.7, alpha = 0.6) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "grey", alpha = 0.75) +  
+  geom_line(aes(y = mean, color = survey_id), show.legend = F) +
+  # facet_wrap(~iso3) +
   # moz.utils::standard_theme() 
   theme(panel.background = element_rect(fill = NA)) +
-  labs(y = "Proportion of sex-workers per age group")
-  # moz.utils::standard_theme() + 
+  labs(y = "Proportion of FSW")
+  # moz.utils::standard_theme() +
   # theme(plot.tag = element_text(size = 12),
   #       plot.title = element_text(size = 12))
 
@@ -437,7 +658,7 @@ estimated_mf %>%
   geom_point(aes(x = year, y = cumulative, color = under25, size = n)) + 
   geom_smooth(aes(x = year, y = cumulative, color = under25, weight = n), method = lm) + 
   moz.utils::standard_theme() +
-  labs(x = "Year", y = "Proportion of FSW pop.") + 
+  labs(x = "Year", y = "Proportion of MSM pop.") + 
   # facet_wrap(~iso3) + 
   lims(y = c(0,1))
 

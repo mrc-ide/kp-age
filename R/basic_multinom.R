@@ -3,6 +3,42 @@ library(nnet)
 library(tidyverse)
 library(TMB)
 library(Matrix)
+library(tidyverse)
+library(VGAM)
+
+single_year_to_five_year <- function (df, fifteen_to_49 = TRUE) 
+{
+  df <- df %>% dplyr::mutate(age_group_label = cut(age, c(0, 
+                                                          seq(5, 85, 5) - 1), c(paste0(seq(0, 79, 5), "-", seq(5, 
+                                                                                                               80, 5) - 1), "80+"), include.lowest = TRUE)) %>% dplyr::left_join(naomi::get_age_groups() %>% 
+                                                                                                                                                                                   select(age_group, age_group_label)) %>% dplyr::select(-age_group_label)
+  if (fifteen_to_49) {
+    df %>% dplyr::filter(age %in% 15:49) %>% dplyr::select(-age)
+  }
+  else {
+    df %>% dplyr::select(-age)
+  }
+}
+
+nga <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/NGA/NGA2020BBS_FSW/NGA2020BBS_FSW.rds")
+
+nga <- nga %>%
+  mutate(age= as.numeric(age)
+  ) %>% 
+  select(age) %>% 
+  single_year_to_five_year()
+
+nga2 <- nga %>% 
+  count(age_group) %>% 
+  pivot_wider(names_from = age_group, values_from = n)
+# pivot_wider(names_from = age_group, values_from = prop)
+
+offset2 = cbind(qlogis(0.2), qlogis(0.3), qlogis(0.2), qlogis(0.1), qlogis(0.1), qlogis(0.1))
+
+model1 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = nga2)
+
+
+model2 <-VGAM::vglm(cbind(Y015_019, Y020_024, Y025_029, Y030_034, Y035_039, Y040_044, Y045_049) ~ 1, family = "multinomial", data = nga2, offset = offset2)
 # nga <- readRDS("C:/Users/rla121/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/NGA/NGA2020BBS_FSW/NGA2020BBS_FSW.rds")
 # nga <- nga %>% 
 #   mutate(age2 = age,
@@ -437,6 +473,7 @@ tmb_int$data <- list(
 
 tmb_int$par <- list(
   beta_0 = rep(0, ncol(X_stand_in)),
+  # lag_logit_phi_beta = 0
   
   # u_spatial = rep(0, ncol(Z_spatial)),
   # log_prec_spatial = 0
@@ -452,19 +489,19 @@ tmb_int$par <- list(
   # u_survey = rep(0, ncol(Z_survey)),
   # log_prec_survey = 0,
   # 
-  eta3 = array(0, c(ncol(Z_survey), ncol(Z_age))),
-  log_prec_eta3 = 0, 
-  logit_eta3_phi_age = 0
+  # eta3 = array(0, c(ncol(Z_survey), ncol(Z_age))),
+  # log_prec_eta3 = 0, 
+  # logit_eta3_phi_age = 0
 )
 
 tmb_int$random <- c(               # Put everything here except hyperparamters
-  "beta_0",
+  # "beta_0",
   # "beta_age"
   #"beta_year"
   # "u_age"
   # "u_survey",
   # "u_spatial"
-  "eta3"
+  # "eta3"
 )
 
 file.remove("src/tmb_sample.dll")
