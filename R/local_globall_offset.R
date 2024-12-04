@@ -24,7 +24,7 @@ nga_spectrum_dat <- naomi::extract_pjnz_naomi("~/Imperial College London/HIV Inf
 
 spectrum_data_offsets <- spectrum_data %>%
   bind_rows() %>%
-  bind_rows(nga_spectrum_dat) %>%
+  # bind_rows(nga_spectrum_dat) %>%
   filter(age %in% 15:49,
          year > 1992,
          sex == "female") %>%
@@ -77,6 +77,7 @@ spectrum_data_offsets <- spectrum_data %>%
       mutate(tpa2020 = totpop2020/sum(totpop2020)) %>% 
       ungroup())
 
+saveRDS(spectrum_data_offsets, "~/Downloads/alloffsets.rds")
 
 dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/fullweightedandunweighteddata_0210.rds") %>%
   filter(vars == "age") %>%
@@ -288,8 +289,8 @@ national_tparpt <- sd_report
 dat2 %>% 
   filter(iso3 == "MWI" | iso3 == "MLI") %>%
   ggplot() + 
-  geom_line(aes(x = age_group, y = national_tpa, color = survey_id), show.legend = T) + 
-  geom_line(aes(x = age_group, y = tpa2020), color = "black")  
+  geom_line(aes(x = age_group, y = local_tpa, color = survey_id), show.legend = T) + 
+  geom_line(aes(x = age_group, y = tpa), color = "black")  
   # geom_line(aes(x = age_group, y = global_tpa, color = year ))
 
 # ZAF2018BBS_FSW ; ZAF2014BBS_FSW

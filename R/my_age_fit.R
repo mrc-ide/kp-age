@@ -169,8 +169,8 @@ dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/D
   ungroup() %>% 
   mutate(year = factor(year))
 
-dat <- dat %>% 
-  bind_rows(fsw_ag)
+# dat <- dat %>% 
+#   bind_rows(fsw_ag)
 
 dat <- crossing(age_group = dat$age_group,
                 select(dat, iso3, survey_id, year)) %>%
@@ -305,6 +305,14 @@ mf_model <- spectrum_data_f %>%
   # #        tpa = ifelse(age_group == "Y045_049", 0.5, tpa)) %>% 
   # ungroup()
 
+naomi <- readRDS("~/Downloads/naomi2022_indicators 1.rds") 
+
+# Let's get some local bits
+naomi <- naomi %>% 
+  filter(indicator == "population", sex == "female",
+         age_group %in% c("Y015_019", "Y020_024", "Y025_029", "Y030_034", "Y035_039", "Y040_044", "Y045_049"))
+
+area_dictionary <- read_csv("~/Downloads/area_dictionary.csv")
 
 
 dat2 <- dat %>%
