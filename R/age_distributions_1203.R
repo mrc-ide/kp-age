@@ -1084,7 +1084,7 @@ dat %>%
 
 ###### Age over time
 
-age_dat <- dat %>%
+single_year_ages <- dat %>%
   filter(kp == "PWID") %>% 
   bind_rows(dat %>%
               filter(kp == "CFSW") ) %>% 
@@ -1125,7 +1125,10 @@ age_dat <- dat %>%
          !is.na(sex)) %>% 
   group_by(survey_id) %>% 
   mutate(denom = n()) %>% 
-  ungroup() %>% 
+  ungroup() 
+
+
+age_dat <- single_year_ages %>% 
   group_by(survey_id, denom, kp, year, iso3, sex) %>% 
   summarise(median_age = median(age)) %>% 
   ungroup() %>% 
@@ -1195,3 +1198,165 @@ median_age_plot <- age_dat %>%
         axis.title.x = element_text(size = 10.5))
 
 ggpubr::ggarrange(median_age_plot, age_diff_plot, common.legend = T, legend = "bottom")
+
+
+# Inla mod for median age over time
+
+formula_pwid <- log(age) ~ 1 + year*sex + f(survey_id, model = "iid")
+
+formula_fswmsm <- log(age) ~ 1 + year + f(survey_id, model = "iid")
+
+
+median_age_inladf <- crossing(year = c(1995:2024),
+         sex = c("female", "male")) %>% 
+  bind_rows(single_year_ages %>% 
+              mutate(sex = ifelse(sex == 0 , "male", "female")) %>% 
+              left_join(genpop_median_ages %>% 
+                          rename(genpop_median = median_age)))
+
+
+genpop_medians_plot_fem <- age_dat %>% 
+  left_join(genpop_median_ages %>% 
+              rename(genpop_median = median_age)) %>% 
+  filter(sex == "female") %>% group_split(year)
+
+
+
+moz.utils::calculate_quantile(genpop_medians_plot_fem$genpop_median, weights = genpop_medians_plot_fem$denom, percentage = F)
+
+
+genpop_medians_plot_fem <- age_dat %>% 
+  left_join(genpop_median_ages %>% 
+              rename(genpop_median = median_age)) %>% 
+  filter(sex == "female") %>%
+  group_by(year) %>%
+  reframe(calculate_quantile(genpop_median, weights = denom, percentage = F))
+
+fsw_median_age_inladf <- median_age_inladf %>% 
+  filter(kp %in% c("FSW", NA),
+         sex == "female") 
+
+med_age_mod_fsw <- INLA::inla(formula_fswmsm,
+                          family = "gaussian",
+                          E = genpop_median,
+                          data = median_age_inladf %>% 
+                            filter(kp %in% c("FSW", NA),
+                                   sex == "female") ,
+                          control.compute=list(config = TRUE)
+                          )
+
+fsw_medianages <- moz.utils::sample_model(med_age_mod_fsw, fsw_median_age_inladf, "median_age") %>% mutate(exp_mean = exp(mean), 
+                                                                                                           exp_lower = exp(lower), 
+                                                                                                           exp_upper = exp(upper))
+
+
+fsw_medianages_plot <- fsw_medianages %>% 
+  ggplot() + 
+  geom_line(aes(x = year, y = exp_mean)) +
+  geom_ribbon(aes(x = year, ymin = exp_lower, ymax = exp_upper), alpha = 0.3) +
+  geom_point(data = age_dat %>% filter(kp %in% c("FSW")), aes(x = year, y = median_age)) + 
+  moz.utils::standard_theme() + 
+  labs(x = "Year", y = "Median Age") +
+  geom_line(data = genpop_medians_plot_fem, aes(x = year, y = `0.5`), color = "darkred")
+
+fsw_age <- single_year_ages %>% filter(kp == "FSW")
+msm_age <- single_year_ages %>% filter(kp == "MSM")
+pwid_age <- single_year_ages %>% filter(kp == "PWID")
+
+hist(log(fsw_age$age), freq = FALSE, main = "Histogram with Log-Normal Density", xlab = "Value")
+curve(dlnorm(x, meanlog = mean(log(fsw_age$age)), sdlog = sd(log(fsw_age$age))), 
+      add = TRUE, col = "red", lwd = 2, 
+      from = min(fsw_age$age), to = max(fsw_age$age))
+
+set.seed(123)  # For reproducibility
+sample_indices <- sample(1:length(fsw_age$age), 5000)
+shapiro.test(log(fsw_age$age[sample_indices]))
+             
+log_x <- log(fsw_age$age)
+qqnorm(log_x, main = "Q-Q Plot of Log-Transformed Data, MSM")
+qqline(log_x, col = "red")
+
+
+ks.test (log(fsw_age$age), "pgamma", shape=217, rate=68)
+
+library(MASS)
+gamma_fit <- fitdistr(fsw_age$age, "gamma")
+
+# MASS::fitdistr(log(fsw_age$age), "gamma")
+shape <- gamma_fit$estimate["shape"]
+rate <- gamma_fit$estimate["rate"]
+hist(fsw_age$age,100, freq = F)
+u = 0:100
+lines(u,do.call(dgamma,c(list(u),gamma_fit$estimate)))
+
+# Plot histogram with fitted gamma density
+hist(fsw_age$age, freq = FALSE, main = "Histogram with Gamma Density", xlab = "Age")
+curve(dgamma(x, shape = shape, rate = rate), add = TRUE, col = "red", lwd = 2,
+      from = min(fsw_age$age), to = max(fsw_age$age))
+library(fitdistrplus)
+gamma_fit <- fitdist(fsw_age$age, "gamma")
+qqcomp(gamma_fit, main = "Q-Q Plot for Gamma Distribution")
+
+
+ages_list <- list(fsw_age$age,
+     msm_age$age,
+     pwid_age$age) %>% 
+  bind_rows()
+
+names(ages_list) <- c("FSW", "MSM", "PWID")
+ages <- single_year_ages %>% dplyr::select(age, kp)
+
+write_csv(ages, "~/Downloads/ages.csv")
+
+msm_median_age_inladf <- median_age_inladf %>% 
+  filter(kp %in% c("MSM", NA),
+         sex == "male") 
+
+med_age_mod_msm <- INLA::inla(formula_fswmsm,
+                              family = "gaussian",
+                              E = genpop_median,
+                              data = median_age_inladf %>% 
+                                filter(kp %in% c("MSM", NA),
+                                       sex == "male") ,
+                              control.compute=list(config = TRUE)
+)
+
+msm_medianages <- moz.utils::sample_model(med_age_mod_msm, msm_median_age_inladf, "median_age") %>% mutate(exp_mean = exp(mean), 
+                                                                                                           exp_lower = exp(lower), 
+                                                                                                           exp_upper = exp(upper))
+
+msm_medianages_plot <- msm_medianages %>% 
+  ggplot() + 
+  geom_line(aes(x = year, y = exp_mean)) +
+  geom_ribbon(aes(x = year, ymin = exp_lower, ymax = exp_upper), alpha = 0.3) +
+  geom_point(data = median_age_inladf %>% filter(kp %in% c("MSM")), aes(x = year, y = median_age)) + 
+  moz.utils::standard_theme() + 
+  labs(x = "Year", y = "Median Age")
+
+
+
+pwid_median_age_inladf <- median_age_inladf %>% 
+  filter(kp %in% c("PWID", NA)) 
+
+med_age_mod_pwid <- INLA::inla(formula_pwid,
+                              family = "gaussian",
+                              E = genpop_median,
+                              data = median_age_inladf %>% 
+                                filter(kp %in% c("PWID", NA)) ,
+                              control.compute=list(config = TRUE)
+)
+
+pwid_medianages <- moz.utils::sample_model(med_age_mod_pwid, pwid_median_age_inladf, "median_age") %>% mutate(exp_mean = exp(mean), 
+                                                                                                           exp_lower = exp(lower), 
+                                                                                                           exp_upper = exp(upper))
+
+pwid_medianages_plot <- pwid_medianages %>% 
+  # filter(year %in% c(2015:2024)) %>% 
+  ggplot() + 
+  geom_line(aes(x = year, y = exp_mean)) +
+  geom_ribbon(aes(x = year, ymin = exp_lower, ymax = exp_upper), alpha = 0.3) +
+  geom_point(data = median_age_inladf %>% filter(kp %in% c("PWID")), aes(x = year, y = median_age)) + 
+  moz.utils::standard_theme() + 
+  labs(x = "Year", y = "Median Age") + 
+  facet_wrap(~sex)
+

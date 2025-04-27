@@ -342,9 +342,11 @@ duration_model <- duration_dat_plot %>%
   group_by(survey_id, iso3, kp2, year) %>% 
   mutate(median_duration = median(duration_estimate),
          lower_duration = quantile(duration_estimate, 0.25),
-         upper_duration = quantile(duration_estimate, 0.75)) %>% 
+         upper_duration = quantile(duration_estimate, 0.75),
+         mean_duration = mean(duration_estimate),
+         median_log_duration = median(log(duration_estimate))) %>% 
   ungroup() %>% 
-  group_by(survey_id, iso3, kp2, year, median_duration, lower_duration, upper_duration, duration_cat, denom, duration_estimate) %>% 
+  group_by(survey_id, iso3, kp2, year, mean_duration, median_duration, median_log_duration, lower_duration, upper_duration, duration_cat, denom, duration_estimate) %>% 
   summarise(n = n()) %>% 
   ungroup() %>% 
   group_by(survey_id) %>% 
@@ -355,16 +357,28 @@ duration_model <- duration_dat_plot %>%
 
 fsw_inla_durationdat <- crossing(year = 1993:2023,
          denom = 1) %>% 
-  bind_rows(duration_dat_plot %>% filter(kp2 == "FSW")) 
+  bind_rows(duration_dat_plot %>% filter(kp2 == "FSW") %>% 
+              filter(!duration_estimate == 0)) %>% 
+  mutate(id.year = multi.utils::to_int(year)-1) 
+  # mutate(duration_estimate = ifelse(duration_estimate == 0, 0.001, duration_estimate))
+
+# log_x <- log(fsw_inla_durationdat$duration_estimate)
+# qqnorm(log_x, main = "Q-Q Plot of Log-Transformed Duration Data, FSW")
+# qqline(log_x, col = "red")
 
 msm_inla_durationdat <- crossing(year = 2005:2023,
                                  denom = 1) %>% 
-  bind_rows(duration_dat_plot %>% filter(kp2 == "MSM")) 
+  bind_rows(duration_dat_plot %>% filter(kp2 == "MSM") %>% 
+              filter(!duration_estimate == 0)) %>% 
+  mutate(id.year = multi.utils::to_int(year)-1) 
+  # mutate(duration_estimate = ifelse(duration_estimate == 0, 0.001, duration_estimate))
 
 pwid_inla_durationdat <- crossing(year = 2005:2023,
                                  denom = 1) %>% 
-  bind_rows(duration_dat_plot %>% filter(kp2 == "PWID"))  %>% 
-  mutate(id.year = multi.utils::to_int(year)-1)
+  bind_rows(duration_dat_plot %>% filter(kp2 == "PWID") %>% 
+              filter(!duration_estimate == 0))  %>% 
+  mutate(id.year = multi.utils::to_int(year)-1) 
+  # mutate(duration_estimate = ifelse(duration_estimate == 0, 0.001, duration_estimate))
 
 
 duration_datlist <- list(fsw_inla_durationdat, msm_inla_durationdat,
@@ -383,10 +397,10 @@ duration_formula <- duration_estimate ~ 1 + id.year + f(survey_id, model = "iid"
 
 duration_mod <- INLA::inla(formula = duration_formula,
                            # E = denom,
-                           family = "poisson",
+                           family = "Xpoisson",
                            # weights = denom,
                            # control.family = list(weights = denom),
-                           data = pwid_inla_durationdat,
+                           data = df,
                            control.compute=list(config = TRUE))      
 
 dur_model_summaries[[3]] <- summary(duration_mod)
@@ -412,31 +426,35 @@ incidence_samples <- matrix(sapply(samples.effect, cbind), ncol=1000)
 ident <- df[ind.effect, ]
 
 qtls <- apply(incidence_samples, 1, quantile, c(0.025, 0.5, 0.975))
+mean_pred <- rowMeans(incidence_samples)
 
 predicted_dat <- ident %>%
   ungroup() %>%
   mutate(
     lower = qtls[1,],
     median = qtls[2,],
+    mean = mean_pred,
     upper = qtls[3,]
   ) %>% 
   mutate(exp_lower = exp(lower),
          exp_median = exp(median),
+         exp_mean = exp(mean),
          exp_upper = exp(upper),
          kp = kp)
 
-predictions[[]] <- predicted_dat
+predictions[[i]] <- predicted_dat
 }
 
-predictions %>% bind_rows() %>% select(year, exp_median, exp_lower, exp_upper, kp) %>% moz.utils::name_kp() %>% 
+predictions %>% bind_rows() %>% dplyr::select(year, median, mean, lower, upper, exp_median, exp_mean, exp_lower, exp_upper, kp) %>% moz.utils::name_kp() %>% 
   ggplot() +
   geom_ribbon(aes(x = year, ymin = exp_lower, ymax = exp_upper), alpha = 0.3) +
   geom_line(aes(x = year, y = exp_median)) +
+  geom_line(aes(x = year, y = exp_mean), color = "darkred") +
   # geom_pointrange(data = duration_model  %>% select(survey_id, iso3, kp = kp2, year, median_duration, lower_duration, upper_duration, denom) %>% distinct() %>% moz.utils::name_kp(), aes(y = median_duration, ymin = lower_duration, ymax = upper_duration , x = year, size = denom, color = iso3)) +
-  geom_point(data = duration_model  %>% select(survey_id, iso3, kp = kp2, year, median_duration, lower_duration, upper_duration, denom) %>% distinct() %>% moz.utils::name_kp(), aes(y = median_duration, x = year, size = denom, color = iso3)) +
+  geom_point(data = duration_model  %>% dplyr::select(survey_id, iso3, kp = kp2, year, mean_duration, median_log_duration, median_duration, lower_duration, upper_duration, denom) %>% distinct() %>% moz.utils::name_kp(), aes(y = mean_duration, x = year, size = denom, color = iso3)) +
   moz.utils::standard_theme() +
   facet_wrap(~kp) +
-  coord_cartesian(ylim = c(0, 10)) + 
+  # coord_cartesian(ylim = c(0, 12)) +
   scale_size_continuous(range = c(0.5, 3)) + 
   labs(y = "Duration, years", x = "Year", size = "Survey Sample Size") +
   guides(color = "none") + 
