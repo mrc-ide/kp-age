@@ -48,13 +48,16 @@ fsw_inla_hivdat_agemod <- inla_hivdat_agemod %>%
 
 
 iso3_list <- data.frame(iso3 = moz.utils::ssa_iso3()) %>% rownames_to_column() %>% rename(id.iso3 = rowname)
+
 fsw_inla_hivdat_agemod <- fsw_inla_hivdat_agemod %>% left_join(iso3_list) %>% mutate(id.iso3 = multi.utils::to_int(id.iso3))
+
+saveRDS(fsw_inla_hivdat_agemod, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/inla_model_test_2904.rds")
 dat <- fsw_inla_hivdat_agemod %>%
   mutate(id.year.age = group_indices(., age, year))
   # mutate(id.year.age = group_indices(., age, year))
 n_ages <- length(unique(dat$age))
 n_years <- length(unique(dat$year))
-n_interactions_year <- n_years * n_age
+n_interactions_year <- n_years * n_ages
 
 
 # Sum-to-zero constraint within each year for age effects
@@ -85,7 +88,7 @@ Q2 <- kronecker(R_age, R_year)
 fsw_agehiv_mod <- inla(n ~ 1
                        + f(id.year.age, model = "generic0", Cmatrix = Q2, extraconstr = list(A = A_combined2, e = e2)),
                        Ntrials = denom,
-                       # offset = qlogis(tot_prev),
+                       offset = qlogis(tot_prev),
                        data = dat,
                        family = "xbinomial",
                        control.family = list(link = "logit"),

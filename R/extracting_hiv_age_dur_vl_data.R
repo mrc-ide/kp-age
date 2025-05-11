@@ -30,7 +30,7 @@ files <- lapply(survey_id, function(x) {
   orderly2::orderly_search(wow)
 })
 
-files <- lapply(survey_id, function(x) {
+files_raw <- lapply(survey_id, function(x) {
   wow <- glue::glue('latest(name == "0_extract_raw" && parameter:survey_id == "{x}")')
   orderly2::orderly_search(wow)
 })
@@ -54,6 +54,20 @@ for (i in files){
 }
 
 
+rawdatas <- list()
+for (i in files){
+  id = i
+  
+  path = paste0(getwd(), "/archive/1_recode/", id)
+  # 
+    raw_data <- readRDS(paste0(path, "/raw_data.rds"))
+    rawdatas[[i]] <- raw_data
+  # 
+  # clean_data <- read_csv(paste0(path, "/dat.csv"))
+  # cleandatas[[i]] <- clean_data
+}
+
+
 # cleandatas <- list()
 # rawdatas <- list()
 # for (i in files){
@@ -73,7 +87,7 @@ cleandatas_compact <-  Filter(function(df) all(c("age", "hiv") %in% colnames(df)
 
 desired_columns <- c("survey_id", "survey_city", "area_id", "age", "sex", "gender","hiv", 
                      "coupon1", "coupon2", "coupon3", "coupon4", "coupon5", "coupon6", 
-                     "network_size", "own_coupon", "vl", "vl_result_count", "vl_result_detectable", "vl_results_suppressed", 
+                     "network_size", "own_coupon", "vl", "vl_result_count", "vl_result_detectable", "vl_result_suppressed", 
                      "age_fs_gift", "age_fs_paid", "age_fs_paidfor_anal", "age_fs_paidfor_vag", "age_startsw", "age_fs_paidorgift","duration_yr", "duration_mnth", 
                      "age_fs_man", "age_fs_man_anal", "age_fs_man_anal_cat", "age_fs_man_cat",
                      "age_inject", "inject_dur")
@@ -120,9 +134,10 @@ filteredcleandata <- lapply(cleandatas_compact, function(df) {
 filteredcleandata <- bind_rows(filteredcleandata)
 
 filteredcleandata <- filteredcleandata %>% 
-  moz.utils::separate_survey_id()
+  moz.utils::separate_survey_id() %>% 
+  mutate(year = ifelse(survey_id == "BEN2018ACA_FSW", 2008, year))
 
-saveRDS(filteredcleandata, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_1703.rds")
+saveRDS(filteredcleandata, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_2904.rds")
 
 meta_data <- read_csv(paste0(path,  "/",  survey_id, "_meta.csv"))
 
