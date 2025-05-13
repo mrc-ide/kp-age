@@ -16,7 +16,7 @@ single_year_to_five_year <- function (df, fifteen_to_49 = TRUE)  {
   }
 }
 
-dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_1703.rds")
+dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_1305.rds") 
 
 spectrum_dat <- readRDS("~/Downloads/2024_spectrum_data.rds") %>%
   bind_rows() %>%
@@ -73,7 +73,7 @@ msm_mediandat <- dat %>%
     max.g1 = max(age, na.rm = T)
   ) %>% ungroup()
 
-msm_median <- metamedian(msm_mediandat)
+# msm_median <- metamedian(msm_mediandat)
 
 
 tg_median <- dat %>%
@@ -562,24 +562,19 @@ distribution_plot <- dat %>%
                   mutate(duration_estimate = NA_integer_,
                          kp = "TGW")) %>% 
       bind_rows(dat %>%
-                  filter(kp %in% c("MSM", "MSMTG", "TG", "TGW")) %>% 
-                  mutate(kp2 = case_when(kp == "MSMTG" & gender %in% c("female", "non-binary", "tgw") ~ "TGW",
-                                         kp == "MSMTG" & gender %in% c("male") ~ "MSM",
-                                         kp == "MSM" & gender %in% c("female", "TGW", "other", "3", "5") ~ "TGW",
-                                         kp == "MSM" & gender %in% c("male", "0", "1") ~ "MSM",
-                                         kp == "TG" & gender %in% c(0, 4) ~ "TGM",
-                                         kp == "TG" & gender == c(1, 3) ~ "TGW", 
-                                         kp == "TG" & sex == 1 ~ "TGM", 
-                                         kp == "TG" & sex == 0 ~ "TGW",
-                                         TRUE ~ kp)) %>% 
-                  filter(kp2 %in% c("TG", "TGW"), !iso3 == "NAM") %>% 
-                  mutate(duration_calc = age - age_fs_man,
+                  filter(kp == "CFSW") %>% 
+                  mutate(duration_calc = age - age_fs_paidfor,
                          duration_calc = ifelse(duration_calc < 0 , NA_integer_, duration_calc),
-                         duration_calc2 = age - age_fs_man_anal,
+                         duration_calc2 = age - age_fs_paidfor_anal,
                          duration_calc2 = ifelse(duration_calc2 < 0 , NA_integer_, duration_calc2),
-                         duration_estimate = ifelse(is.na(duration_calc), duration_calc2, duration_calc)) %>% 
-                  mutate(duration_estimate = NA_integer_,
-                         kp = "CFSW")) %>% 
+                         duration_calc3 = age - age_fs_paidfor_vag,
+                         duration_calc3 = ifelse(duration_calc3 < 0 , NA_integer_, duration_calc3),
+                         duration_calc4 = case_when(is.na(duration_calc2) ~ duration_calc3,
+                                                    is.na(duration_calc3) ~ duration_calc2,
+                                                    duration_calc2 > duration_calc3 ~ duration_calc2,
+                                                    duration_calc3 > duration_calc2 ~ duration_calc3),
+                         duration_estimate = ifelse(is.na(duration_cfsw), duration_calc4, duration_cfsw))
+                ) %>% 
       bind_rows(dat %>% 
                   filter(kp == "FSW", !survey_id == "ETH2020ACA_FSW") %>% 
                   mutate(duration_calc = age - age_fs_paid,
@@ -621,9 +616,11 @@ distribution_plot <- dat %>%
   mutate(x_min = ifelse(distribution == "Age", 15, 0),
          x_max = ifelse(distribution == "Age", 60, 40))
 
+
+
 max_density <- distribution_plot %>%
   left_join(moz.utils::region()) %>% 
-  group_by(kp, distribution, region) %>%
+  group_by(kp, distribution) %>%
   filter(!is.na(variable)) %>% 
   summarise( median_val = median(variable, na.rm = TRUE),
              iqr_low = quantile(variable, 0.25, na.rm = TRUE),
@@ -641,6 +638,8 @@ max_density <- distribution_plot %>%
 
 
 # Region values
+
+
 
 region_dist_iqrs <- distribution_plot %>%
   left_join(moz.utils::region()) %>% 
@@ -706,17 +705,8 @@ age_plots <- distribution_plot %>%
           axis.text = element_text(size = 14)
           ) + 
     new_scale_color() +
-    # geom_pointrange(aes(x = median_val, xmin = iqr_low, xmax = iqr_high, y = boxplot_y, color = kp), size = 0.25, show.legend = F) +
-    # geom_text(aes(x = median_val, y = boxplot_y, label = round(median_val, 1), color = kp), 
-    #           vjust = -0.5, size = 4, fontface = "bold", show.legend = F) +
-    # geom_pointrange(aes(x = median_val, xmin = iqr_low, xmax = iqr_high, y = 0.15, color = kp), size = 0.25, show.legend = F) +
-    # geom_text(aes(x = median_val, y = 0.15, label = round(median_val, 1), color = kp), 
-    #           vjust = -0.5, size = 5, fontface = "plain", show.legend = F) +
-    # geom_pointrange(aes(x = median_val, xmin = iqr_low, xmax = iqr_high, y = 0.15, color = kp), size = 0.25, show.legend = F) +
     geom_pointrange(aes(x = median_val, xmin = iqr_low, xmax = iqr_high, y = 0.15), color = "#4D251D", size = 0.25, show.legend = F) +
     geom_text(aes(x = median_val, y = 0.15, label = round(median_val, 1)), color = "#4D251D", vjust = -0.5, size = 5, fontface = "plain", show.legend = F) +
-    # scale_color_manual(values = c("FSW" = "#11304F", "MSM" = "#989B6C", "PWID" = "#3F4738",
-    #                               "TGW" = "#195972", "CFSW" = "#4D251D")) +
     labs(x = "Years", y = "")  +
     lims(x = c(0, 30)) +
     coord_cartesian(ylim = c(0,0.20)) + 
@@ -725,13 +715,6 @@ age_plots <- distribution_plot %>%
     moz.utils::standard_theme() +
     theme(aspect.ratio = 1,
           panel.grid = element_blank()) + 
-    geom_text(data = distribution_plot %>% 
-                moz.utils::name_kp() %>% 
-                filter(kp %in% c("Clients of female\nsex workers"), distribution == "Duration") %>%
-                distinct(kp) %>% 
-                mutate(x = 15, y = 0.10, label = "No duration \ninformation \navailable"),
-              aes(x = x, y = y, label = label), color = "#4D251D",
-              size = 5, fontface = "bold", show.legend = F) + 
     geom_text(data = distribution_plot %>% 
                 moz.utils::name_kp() %>% 
                 filter(kp %in% c("Transgender\nwomen"), distribution == "Duration") %>%
@@ -752,50 +735,13 @@ age_plots <- distribution_plot %>%
 
 age_dur_dist <- ggpubr::ggarrange(age_plots, duration_plots, ncol = 2, legend = "none")
 
-png("figs/age_dur_dist_2703.png", width = 450, height = 800, units = "px")
+png("figs/age_dur_dist_1305.png", width = 450, height = 800, units = "px")
 age_dur_dist
 dev.off()
 
-library(patchwork)
-
-# Create labels for population groups as vertical bars
-fsw_label <- wrap_elements(full = ggplot() + 
-                             annotate("text", x = 1, y = 0.5, label = "FSW", angle = 90, size = 4, fontface = "bold") + 
-                             theme_void())
-
-msm_label <- wrap_elements(full = ggplot() + 
-                             annotate("text", x = 1, y = 0.5, label = "MSM", angle = 90, size = 4, fontface = "bold") + 
-                             theme_void())
-tgw_label <- wrap_elements(full = ggplot() + 
-                             annotate("text", x = 1, y = 0.5, label = "TGW", angle = 90, size = 4, fontface = "bold") + 
-                             theme_void())
-
-pwid_label <- wrap_elements(full = ggplot() + 
-                              annotate("text", x = 1, y = 0.5, label = "PWID", angle = 90, size = 4, fontface = "bold") + 
-                              theme_void())
-
-cfsw_label <- wrap_elements(full = ggplot() + 
-                              annotate("text", x = 1, y = 0.5, label = "CFSW", angle = 90, size = 4, fontface = "bold") + 
-                              theme_void())
-
-label_plot <- function(label) {
-  wrap_elements(full = ggplot() + 
-                  annotate("text", x = 1, y = 0.5, label = label, angle = 90, size = 6, fontface = "bold") + 
-                  theme_void())
-}
-
-fsw_label <- label_plot("FSW")
-msm_label <- label_plot("MSM")
-tgw_label <- label_plot("TGW")
-cfsw_label <- label_plot("CFSW")
-pwid_label <- label_plot("PWID")
-
-# Arrange plots into a 2-column layout
- (fsw_label | fswage_dist | fsw_duration) / (msm_label | msm_agedist | msm_duration) / (tgw_label | tgw_agedist | blank_duration) / (cfsw_label | cfsw_agedist | blank_duration) / (pwid_label | pwid_agedist | pwid_duration) 
 
 
 
-(fswage_dist | fsw_duration) / (msm_agedist | msm_duration) / (tgw_agedist | blank_duration) / (cfsw_agedist | blank_duration) / (pwid_agedist | pwid_duration) 
 
 
 # Prevalence by age 
@@ -1146,58 +1092,58 @@ genpop_median_ages <- spectrum_dat %>%
   summarise(median_age = median(rep(age, totpop), na.rm = TRUE)) %>% 
   ungroup()
 
-age_diff_plot <-  age_dat %>% rename(median_kp_age = median_age) %>% left_join(genpop_median_ages) %>% mutate(age_diff = median_kp_age - median_age) %>% mutate(sex = ifelse(kp == "TGW", "female", sex)) %>% mutate(kp = factor(kp, levels = c("FSW", "MSM", "PWID", "TGW", "CFSW"))) %>% 
-  mutate(sex = ifelse(kp != "PWID", 0, sex)) %>% 
-  moz.utils::name_kp() %>% 
-  ggplot() + 
-  geom_point(aes(x = year, y = age_diff, color = sex, size = denom), show.legend = T, alpha = 0.2, shape = 16) + 
-  # moz.utils::scale_manual(type = F, n = 2) +
-  scale_x_continuous(labels = scales::number_format(accuracy = 1, big.mark = "")) +
-  facet_wrap(~kp, ncol = 1, strip.position = "right") + 
-  # new_scale_color() +
-  # geom_smooth(aes(x = year, y = age_diff, group = interaction(kp, sex), weight = denom, color = sex), method = "lm") +
-  geom_smooth(aes(x = year, y = age_diff, group = interaction(kp, sex), weight = denom, color = sex), method = "lm", show.legend = F) +
-   scale_color_manual(values = c("black","violetred", "royalblue4")) +
-  moz.utils::standard_theme() + 
-  geom_hline(yintercept = 0, color = "darkred", linetype = 3) +
-  labs(x = "Year", y = "Age difference (years)", size = "Survey Denominator", color = "Sex") + 
-  theme(aspect.ratio = 1) +
-  # guides(color = "none") +
-  ggtitle(label = "Difference between median KP age and \nmedian total population age")  +
-  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 10),
-        plot.margin = margin(0.1,0.1,0.1,0.1, "cm"),
-        strip.text = element_text(size = 10.5),
-        axis.title.y = element_text(size = 10.5),
-        axis.title.x = element_text(size = 10.5))
-
-
-median_age_plot <- age_dat %>% 
-  rename(median_kp_age = median_age) %>% 
-  left_join(genpop_median_ages) %>% 
-  mutate(age_diff = median_kp_age - median_age) %>% 
-  mutate(sex = ifelse(kp == "TGW", "female", sex)) %>% 
-  mutate(kp = factor(kp, levels = c("FSW", "MSM", "PWID", "TGW", "CFSW"))) %>% 
-  mutate(sex = ifelse(kp != "PWID", 0, sex)) %>% 
-  moz.utils::name_kp() %>%
-  ggplot() + 
-  geom_point(aes(x = year, y = median_kp_age, size = denom, color = sex), alpha = 0.2, shape = 16) + 
-  geom_smooth(aes(x = year, y = median_kp_age, weight = denom, color = sex, group = interaction(kp, sex)), method = "lm") +
-  scale_x_continuous(labels = scales::number_format(accuracy = 1, big.mark = "")) +
-  facet_wrap(~kp, ncol = 1) +
-  moz.utils::standard_theme() + 
-  scale_color_manual(values = c( "black","violetred", "royalblue4")) +
-  # moz.utils::scale_manual(type = F, n = 5) + 
-  # guides(color = "none") +
-  theme(aspect.ratio = 1,
-        strip.text = element_blank()) +
-  labs(x= "Year", y = "Age (Years)", size = "Survey Denominator", color = "Sex") +
-  ggtitle(label = "Median \nAge") +
-  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 10.5) ,
-        plot.margin = margin(0.1,0.1,0.1,0.1, "cm"),
-        axis.title.y = element_text(size = 10.5),
-        axis.title.x = element_text(size = 10.5))
-
-ggpubr::ggarrange(median_age_plot, age_diff_plot, common.legend = T, legend = "bottom")
+# age_diff_plot <-  age_dat %>% rename(median_kp_age = median_age) %>% left_join(genpop_median_ages) %>% mutate(age_diff = median_kp_age - median_age) %>% mutate(sex = ifelse(kp == "TGW", "female", sex)) %>% mutate(kp = factor(kp, levels = c("FSW", "MSM", "PWID", "TGW", "CFSW"))) %>% 
+#   mutate(sex = ifelse(kp != "PWID", 0, sex)) %>% 
+#   moz.utils::name_kp() %>% 
+#   ggplot() + 
+#   geom_point(aes(x = year, y = age_diff, color = sex, size = denom), show.legend = T, alpha = 0.2, shape = 16) + 
+#   # moz.utils::scale_manual(type = F, n = 2) +
+#   scale_x_continuous(labels = scales::number_format(accuracy = 1, big.mark = "")) +
+#   facet_wrap(~kp, ncol = 1, strip.position = "right") + 
+#   # new_scale_color() +
+#   # geom_smooth(aes(x = year, y = age_diff, group = interaction(kp, sex), weight = denom, color = sex), method = "lm") +
+#   geom_smooth(aes(x = year, y = age_diff, group = interaction(kp, sex), weight = denom, color = sex), method = "lm", show.legend = F) +
+#    scale_color_manual(values = c("black","violetred", "royalblue4")) +
+#   moz.utils::standard_theme() + 
+#   geom_hline(yintercept = 0, color = "darkred", linetype = 3) +
+#   labs(x = "Year", y = "Age difference (years)", size = "Survey Denominator", color = "Sex") + 
+#   theme(aspect.ratio = 1) +
+#   # guides(color = "none") +
+#   ggtitle(label = "Difference between median KP age and \nmedian total population age")  +
+#   theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 10),
+#         plot.margin = margin(0.1,0.1,0.1,0.1, "cm"),
+#         strip.text = element_text(size = 10.5),
+#         axis.title.y = element_text(size = 10.5),
+#         axis.title.x = element_text(size = 10.5))
+# 
+# 
+# median_age_plot <- age_dat %>% 
+#   rename(median_kp_age = median_age) %>% 
+#   left_join(genpop_median_ages) %>% 
+#   mutate(age_diff = median_kp_age - median_age) %>% 
+#   mutate(sex = ifelse(kp == "TGW", "female", sex)) %>% 
+#   mutate(kp = factor(kp, levels = c("FSW", "MSM", "PWID", "TGW", "CFSW"))) %>% 
+#   mutate(sex = ifelse(kp != "PWID", 0, sex)) %>% 
+#   moz.utils::name_kp() %>%
+#   ggplot() + 
+#   geom_point(aes(x = year, y = median_kp_age, size = denom, color = sex), alpha = 0.2, shape = 16) + 
+#   geom_smooth(aes(x = year, y = median_kp_age, weight = denom, color = sex, group = interaction(kp, sex)), method = "lm") +
+#   scale_x_continuous(labels = scales::number_format(accuracy = 1, big.mark = "")) +
+#   facet_wrap(~kp, ncol = 1) +
+#   moz.utils::standard_theme() + 
+#   scale_color_manual(values = c( "black","violetred", "royalblue4")) +
+#   # moz.utils::scale_manual(type = F, n = 5) + 
+#   # guides(color = "none") +
+#   theme(aspect.ratio = 1,
+#         strip.text = element_blank()) +
+#   labs(x= "Year", y = "Age (Years)", size = "Survey Denominator", color = "Sex") +
+#   ggtitle(label = "Median \nAge") +
+#   theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 10.5) ,
+#         plot.margin = margin(0.1,0.1,0.1,0.1, "cm"),
+#         axis.title.y = element_text(size = 10.5),
+#         axis.title.x = element_text(size = 10.5))
+# 
+# ggpubr::ggarrange(median_age_plot, age_diff_plot, common.legend = T, legend = "bottom")
 
 
 # Inla mod for median age over time

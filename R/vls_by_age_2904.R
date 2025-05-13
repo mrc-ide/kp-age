@@ -68,6 +68,18 @@ fsw_vls_age_dat <- fsw_vls_dat %>%
   separate_survey_id() %>% 
   left_join(spectrum_vls_dat)
 
+fsw_vls_age_dat %>% 
+  mutate(vls_prev = n/denom) %>% 
+  filter(!is.na(age),
+         !is.na(survey_id)) %>% 
+  ggplot() + 
+  geom_line(aes(x = age, y = vls_prev), color = "blue") + 
+  geom_line(aes(x = age, y = tot_treat)) + 
+  facet_wrap(~survey_id, nrow = 3) + 
+  moz.utils::standard_theme() + 
+  theme(aspect.ratio = 1)
+
+
 # For no year
 inla_fsw_vlsdat_age <- data.frame(age = 15:60,
                           denom = 1) %>% 
@@ -79,23 +91,55 @@ inla_fsw_vlsdat_age <- crossing(age = 15:60,
                                   denom = 1) %>% 
   bind_rows(fsw_vls_age_dat)
 
-# With year
-inla_fsw_vlsdat_age <- crossing(age = 15:60, year = 2000:2023) %>% 
+
+inla_fsw_vlsdat_age <- spectrum_vls_dat %>% filter(year == 2012, iso3 == "UGA", age %in% c(15:50)) %>% 
+  bind_rows(
+  spectrum_vls_dat %>% 
+    filter(year == 2017, 
+           iso3 == "BEN", 
+           age %in% c(15:50)) 
+) %>% 
+  bind_rows(
+  spectrum_vls_dat %>% 
+    filter(year == 2023, 
+           iso3 == "ZMB", 
+           age %in% c(15:50))
+  ) %>% 
+  select(age, tot_treat, year) %>% 
   mutate(denom = 1) %>% 
   bind_rows(fsw_vls_age_dat) %>% 
   mutate(age_centre = age - 14,
-         year_centre = year - 1999) %>% 
+         year_centre = year - 2011) %>% 
   filter(!is.na(age))
 
 
+# # With year
+# inla_fsw_vlsdat_age <- crossing(age = 15:60, year = 2000:2023) %>% 
+#   mutate(denom = 1) %>% 
+#   bind_rows(fsw_vls_age_dat) %>% 
+#   mutate(age_centre = age - 14,
+#          year_centre = year - 1999) %>% 
+#   filter(!is.na(age))
 
-formula = n ~ 1 + age + f(survey_id, model = "iid") 
 
-formula = n ~ 1 + f(age, model = "rw2") + f(survey_id, model = "iid") 
-formula = n ~ 1 + age_centre*year_centre + f(survey_id, model = "iid") 
+
+
+
+
+
+
+
+
+formula = n ~ 1 + age +  f(survey_id, model = "iid") 
+
+formula = n ~ 1 + f(age_centre, model = "rw2") + f(survey_id, model = "iid") 
+formula = n ~ 1 + age_centre  + year_centre + f(survey_id, model = "iid") 
 formula = n ~ 1 +
   f(year_centre, model = "rw2", scale.model = F, group = age_centre, control.group = list(model = "rw2", scale.model = F)) + 
   f(survey_id, model = "iid", hyper = multi.utils::tau_fixed(0.000001)) 
+
+
+formula = n ~ 1 + age_centre+ f(year_centre, model = "rw2") + f(survey_id, model = "iid") 
 
 fsw_vls_mod <- INLA::inla(formula, 
                            family = "binomial",
@@ -106,98 +150,226 @@ fsw_vls_mod <- INLA::inla(formula,
                            control.compute=list(config = TRUE))
 summary(fsw_vls_mod)
 
+
+
+
+
+
+
 fsw_vlsamples <- moz.utils::sample_model(fsw_vls_mod, inla_fsw_vlsdat_age, "n")
 
-# without year to plot OR
-fsw_vlsamples %>% 
-  mutate(plogis_lower = plogis(lower),
-         plogis_mean = plogis(mean),
-         plogis_upper = plogis(upper),
-         exp_lower = exp(lower),
-         exp_mean = exp(mean),
-         exp_upper = exp(upper)) %>% 
-  ggplot() +
-  geom_line(aes(x = age, y = exp_mean)) + 
-  geom_ribbon(aes(x = age, ymin = exp_lower, ymax = exp_upper), alpha = 0.5) +
-  geom_point(data = fsw_vls_age_dat, aes(x = age, y = ((n/denom)/(1-(n/denom)))/((tot_treat)/(1-tot_treat)), color = survey_id), show.legend = F) + 
-  moz.utils::standard_theme() + 
-  labs(x = "Age", y = "OR for VLS in KP relative to genpop") + 
-  scale_y_continuous(trans = "log", labels = scales::number_format(accuracy = 0.1)) + 
-  theme(aspect.ratio = 1) + 
-  guides(color = FALSE) +
-  lims(x = c(15,50)) +
-  geom_hline(yintercept = 1, color = "darkred", linetype = 2)
+# # without year to plot OR
+# fsw_vlsamples %>% 
+#   mutate(plogis_lower = plogis(lower),
+#          plogis_mean = plogis(mean),
+#          plogis_upper = plogis(upper),
+#          exp_lower = exp(lower),
+#          exp_mean = exp(mean),
+#          exp_upper = exp(upper)) %>% 
+#   ggplot() +
+#   geom_line(aes(x = age, y = exp_mean)) + 
+#   geom_ribbon(aes(x = age, ymin = exp_lower, ymax = exp_upper), alpha = 0.5) +
+#   geom_point(data = fsw_vls_age_dat, aes(x = age, y = ((n/denom)/(1-(n/denom)))/((tot_treat)/(1-tot_treat)), color = survey_id), show.legend = F) + 
+#   moz.utils::standard_theme() + 
+#   labs(x = "Age", y = "OR for VLS in KP relative to genpop") + 
+#   scale_y_continuous(trans = "log", labels = scales::number_format(accuracy = 0.1)) + 
+#   theme(aspect.ratio = 1) + 
+#   guides(color = FALSE) +
+#   lims(x = c(15,50)) +
+#   geom_hline(yintercept = 1, color = "darkred", linetype = 2)
 
 # without year to plot at certain levels of genpop covg.
 fsw_vlsamples %>% 
   mutate(plogis_lower = plogis(lower),
          plogis_mean = plogis(mean),
-         plogis_upper = plogis(upper)
+         plogis_upper = plogis(upper)) %>%
+  pivot_longer(cols = c(plogis_mean, tot_treat), names_to = "Population", values_to = "VLS_covg") %>% 
+  # mutate(tot_treat = factor(tot_treat)) %>% 
+  ggplot() + 
+  geom_ribbon(aes(x = age, ymin = plogis_lower, ymax = plogis_upper), alpha = 0.5, fill = "#3B9AB2") + 
+  geom_line(aes(x = age, y = VLS_covg, color = Population), linewidth = 0.75) +
+  scale_colour_manual(values = c( "#3B9AB2", "#D67236")) +
+  facet_wrap(~year) + 
+  labs(x = "Age", y = "% with VLS") + 
+  scale_y_continuous(labels = scales::percent) +
+  ggnewscale::new_scale_color() +
+  facet_wrap(~year) + 
+    moz.utils::standard_theme() + 
+    geom_point(data = fsw_vls_age_dat %>% 
+                 mutate(year = case_when(year %in% c(2017:2019) ~ 2017,
+                                         year %in% c(2021:2023) ~ 2023,
+                                         TRUE ~ year)), 
+               aes(x = age, y = n/denom, color = survey_id), alpha = 0.4, shape = 16) +
+  theme(aspect.ratio = 1) +
+  theme(legend.position = "right")
+
+
          
+  
+  
+  
+  
+  
+  
          
-# with year
-fsw_vlsamples %>% 
-  mutate(plogis_lower = plogis(lower),
-         plogis_mean = plogis(mean),
-         plogis_upper = plogis(upper),
-         exp_lower = exp(lower),
-         exp_mean = exp(mean),
-         exp_upper = exp(upper)) %>% 
-  filter(year %in%  c(2012, 2017, 2023)) %>% 
-  mutate(year = factor(year)) %>% 
-  ggplot() +
-  geom_line(aes(x = age, y = exp_mean, color = year)) + 
-  geom_ribbon(aes(x = age, ymin = exp_lower, ymax = exp_upper, fill = year), alpha = 0.5) +
-  geom_point(data = inla_vlsdat, aes(x = age, y = ((n/denom)/(1-(n/denom)))/((tot_treat)/(1-tot_treat)), color = survey_id), show.legend = F) + 
-  moz.utils::standard_theme() + 
-  labs(x = "Age", y = "OR for VLS in KP relative to genpop") + 
- scale_y_continuous(trans = "log", labels = scales::number_format(accuracy = 0.1)) + 
-  theme(aspect.ratio = 1) + 
-  guides(color = FALSE)
 
 
-fsw_vls_mod_no_offset <- INLA::inla(formula, 
-                          family = "binomial",
-                          Ntrials = denom,
-                          # E = tot_prev,
-                          # offset = qlogis(tot_treat),
-                          data = inla_vlsdat,
-                          control.compute=list(config = TRUE))
-summary(fsw_vls_mod_no_offset)
-
-fsw_vlsamples_no_offset <- moz.utils::sample_model(fsw_vls_mod_no_offset, inla_vlsdat, "n")
-
-fsw_vlsamples_no_offset %>% 
-  mutate(plogis_lower = plogis(lower),
-         plogis_mean = plogis(mean),
-         plogis_upper = plogis(upper),
-         exp_lower = exp(lower),
-         exp_mean = exp(mean),
-         exp_upper = exp(upper)) %>% 
-  filter(year %in%  c(2012, 2017, 2023)) %>% 
-  mutate(year = factor(year)) %>% 
-  ggplot() +
-  geom_line(aes(x = age, y = plogis_mean, color = year)) + 
-  geom_ribbon(aes(x = age, ymin = plogis_lower, ymax = plogis_upper, fill = year), alpha = 0.5) +
-  geom_point(data = inla_vlsdat, aes(x = age, y = (n/denom), color = survey_id), show.legend = F) + 
-  moz.utils::standard_theme() + 
-  labs(x = "Age", y = "% KP with VLS")  + 
-  guides(color = FALSE)
+# 
+# fsw_vls_mod_no_offset <- INLA::inla(formula, 
+#                           family = "binomial",
+#                           Ntrials = denom,
+#                           # E = tot_prev,
+#                           # offset = qlogis(tot_treat),
+#                           data = inla_vlsdat,
+#                           control.compute=list(config = TRUE))
+# summary(fsw_vls_mod_no_offset)
+# 
+# fsw_vlsamples_no_offset <- moz.utils::sample_model(fsw_vls_mod_no_offset, inla_vlsdat, "n")
+# 
+# fsw_vlsamples_no_offset %>% 
+#   mutate(plogis_lower = plogis(lower),
+#          plogis_mean = plogis(mean),
+#          plogis_upper = plogis(upper),
+#          exp_lower = exp(lower),
+#          exp_mean = exp(mean),
+#          exp_upper = exp(upper)) %>% 
+#   filter(year %in%  c(2012, 2017, 2023)) %>% 
+#   mutate(year = factor(year)) %>% 
+#   ggplot() +
+#   geom_line(aes(x = age, y = plogis_mean, color = year)) + 
+#   geom_ribbon(aes(x = age, ymin = plogis_lower, ymax = plogis_upper, fill = year), alpha = 0.5) +
+#   geom_point(data = inla_vlsdat, aes(x = age, y = (n/denom), color = survey_id), show.legend = F) + 
+#   moz.utils::standard_theme() + 
+#   labs(x = "Age", y = "% KP with VLS")  + 
+#   guides(color = FALSE)
   # scale_y_continuous(trans = "log", labels = scales::number_format(accuracy = 0.1))
 
 
-inla_vlsdat %>% 
-  mutate(vls_prev = n/denom) %>% 
-  filter(!is.na(age),
-         !is.na(survey_id)) %>% 
-  ggplot() + 
-  geom_line(aes(x = age, y = vls_prev), color = "blue") + 
-  geom_line(aes(x = age, y = tot_treat)) + 
-  facet_wrap(~survey_id, nrow = 1)
 
 
 
   
+
+
+
+
+
+# FSW Duration 
+
+fsw_vls_dur_dat <- fsw_vls_dat %>% 
+  filter(!is.na(duration_estimate)) %>% 
+  mutate(duration_estimate = round(duration_estimate, 0)) %>% 
+  group_by(survey_id, year, duration_estimate, age, vl_result_suppressed) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  group_by(survey_id, year, duration_estimate, age) %>% 
+  mutate(denom = sum(n)) %>% 
+  ungroup() %>% 
+  filter(vl_result_suppressed == 1) %>% 
+  separate_survey_id() %>% 
+  left_join(spectrum_vls_dat) %>% 
+  select(-hivpop, -artpop, -totpop, -tot_prev)
+
+fsw_vls_dur_dat_no_age <- fsw_vls_dat %>% 
+  filter(!is.na(duration_estimate)) %>% 
+  mutate(duration_estimate = round(duration_estimate, 0)) %>% 
+  group_by(survey_id, year, duration_estimate, vl_result_suppressed) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>% 
+  group_by(survey_id, year, duration_estimate) %>% 
+  mutate(denom = sum(n)) %>% 
+  ungroup() %>% 
+  filter(vl_result_suppressed == 1) %>% 
+  separate_survey_id() %>% 
+  left_join(spectrum_vls_dat) %>% 
+  select(-hivpop, -artpop, -totpop, -tot_prev) 
+
+# For no year
+inla_fsw_vlsdat_dur <- fsw_vls_dur_dat %>%
+  select(survey_id, iso3, year, duration_estimate, age, tot_treat) %>% 
+  mutate(denom = 1) %>% 
+  bind_rows(fsw_vls_dur_dat) %>% 
+  mutate(age_centre = age - 14)
+
+
+formula = n ~ 1 + duration_estimate  + age_centre + f(survey_id, model = "iid") + qlogis(tot_treat)
+
+formula = n ~ 1 + f(duration_estimate, model = "rw2") + age + f(survey_id, model = "iid") 
+
+
+fsw_vls_dur_mod <- INLA::inla(formula, 
+                              family = "binomial",
+                              Ntrials = denom,
+                              # E = tot_prev,
+                              # offset = qlogis(tot_prev),
+                              data = inla_fsw_vlsdat_dur ,
+                              control.compute=list(config = TRUE))
+summary(fsw_vls_dur_mod)
+
+fsw_dur_vlsamples <- moz.utils::sample_model(fsw_vls_dur_mod, inla_fsw_vlsdat_dur, "n")
+
+
+fsw_dur_vlsamples %>% 
+  mutate(plogis_lower = plogis(lower),
+         plogis_mean = plogis(mean),
+         plogis_upper = plogis(upper)) %>% 
+  ggplot() + 
+  geom_line(aes(x = duration_estimate, y= plogis_mean), color = "#00A08A") + 
+  geom_ribbon(aes(x = duration_estimate, ymin = plogis_lower, ymax = plogis_upper), fill = "#00A08A", alpha = 0.3) +
+  geom_point(data = fsw_vls_dur_dat_no_age, aes(x = duration_estimate, y = n/denom, color = survey_id)) +
+  moz.utils::standard_theme() +
+  theme(aspect.ratio = 1) +
+  theme(legend.position = "right") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Duration Estimate, years", y = "% with VLS") + 
+  lims(x = c(0,25)) +
+  facet_wrap(~survey_id)
+  
+  
+fsw_dur_vlsamples %>% 
+  mutate(plogis_lower = plogis(lower),
+         plogis_mean = plogis(mean),
+         plogis_upper = plogis(upper)) %>% 
+  ggplot() +
+  geom_tile(aes(x = age, y = duration_estimate, fill = plogis_mean)) + 
+  facet_wrap(~survey_id) + 
+  theme_minimal()+ 
+  theme(aspect.ratio = 1) + 
+  labs(fill = "% with VLS", y = "Duration, Years", x = "Age")
+
+# # For no year, certain genpop level
+# inla_fsw_vlsdat_age <- crossing(age = 15:60,
+#                                 tot_treat = c(0.3, 0.75, 0.95),
+#                                 denom = 1) %>% 
+#   bind_rows(fsw_vls_age_dat)
+
+
+# inla_fsw_vlsdat_age <- spectrum_vls_dat %>% filter(year == 2012, iso3 == "UGA", age %in% c(15:50)) %>% 
+#   bind_rows(
+#     spectrum_vls_dat %>% 
+#       filter(year == 2017, 
+#              iso3 == "BEN", 
+#              age %in% c(15:50)) 
+#   ) %>% 
+#   bind_rows(
+#     spectrum_vls_dat %>% 
+#       filter(year == 2023, 
+#              iso3 == "ZMB", 
+#              age %in% c(15:50))
+#   ) %>% 
+#   select(age, tot_treat, year) %>% 
+#   mutate(denom = 1) %>% 
+#   bind_rows(fsw_vls_age_dat) %>% 
+#   mutate(age_centre = age - 14,
+#          year_centre = year - 2011) %>% 
+#   filter(!is.na(age))
+
+
+
+
+
+
+
 
 
  
