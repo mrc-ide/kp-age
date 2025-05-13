@@ -37,6 +37,7 @@ files_raw <- lapply(survey_id, function(x) {
 
 files <- Filter(Negate(is.na), files)
 
+saveRDS(files, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/orderly_archive_indices/age_duration_hiv_data_extract_1305_archive_indices.rds")
 # Pulls out the relevant bits
 
 # rawdatas <- list()
@@ -83,13 +84,43 @@ for (i in files){
 #   # cleandatas[[i]] <- clean_data
 # }
 cleandatas_compact <- cleandatas
-cleandatas_compact <-  Filter(function(df) all(c("age", "hiv") %in% colnames(df)), cleandatas)
 
-desired_columns <- c("survey_id", "survey_city", "area_id", "age", "sex", "gender","hiv", 
+duration_cols <- c( "inject_dur", "duration_yr", "duration_mnth", "duration_cfsw" )
+
+age_first_cols <- c("age_fs_paidfor", "age_fs_paidfor_anal", "age_fs_paidfor_vag", 
+                    "age_fs_man", "age_fs_man_anal", "age_inject", "age_fs_gift",
+                    "age_fs_paid", "age_startsw", "age_fs_paidorgift")
+
+
+keep_df <- function(df) {
+  cols <- names(df)
+  
+  has_age <- "age" %in% cols
+  has_duration <- any(duration_cols %in% cols)
+  has_age_first <- any(age_first_cols %in% cols)
+  
+  has_age || has_duration || (has_age && has_age_first)
+}
+
+
+cleandatas_compact <- cleandatas[sapply(cleandatas, keep_df)]
+
+
+# cleandatas_compact <-  Filter(function(df) all(c("age", "hiv") %in% colnames(df)), cleandatas)
+
+
+
+desired_columns <- c("survey_id", "survey_city", "area_id", 
+                     "age", "sex", "gender",
+                     "hiv", 
                      "coupon1", "coupon2", "coupon3", "coupon4", "coupon5", "coupon6", 
-                     "network_size", "own_coupon", "vl", "vl_result_count", "vl_result_detectable", "vl_result_suppressed", 
-                     "age_fs_gift", "age_fs_paid", "age_fs_paidfor_anal", "age_fs_paidfor_vag", "age_startsw", "age_fs_paidorgift","duration_yr", "duration_mnth", 
-                     "age_fs_man", "age_fs_man_anal", "age_fs_man_anal_cat", "age_fs_man_cat",
+                     "network_size", "own_coupon", 
+                     "vl", "vl_result_count", "vl_result_detectable", "vl_result_suppressed", "vl_result_log10",
+                     "duration_yr", "duration_mnth", 
+                     "age_fs_gift", #SW among PWID/MSM - direction not clear
+                     "age_fs_paid", "age_startsw", "age_fs_paidorgift",
+                     "duration_cfsw", "age_fs_paidfor", "age_fs_paidfor_anal", "age_fs_paidfor_vag", #CFSW - anal/vag are for MWI2019 - do whichever is younger
+                     "age_fs_man", "age_fs_man_anal", # Removing categories for now "age_fs_man_anal_cat", "age_fs_man_cat",
                      "age_inject", "inject_dur")
 
 # Filter columns in each data.frame
@@ -98,35 +129,25 @@ filteredcleandata <- lapply(cleandatas_compact, function(df) df[ , intersect(nam
 filteredcleandata <- lapply(cleandatas_compact, function(df) {
   # Select only available desired columns
   df <- df[ , intersect(names(df), desired_columns), drop = FALSE]
-  
-  # Find coupon columns that exist in the data.frame
+
+  # Change formatting various
   coupon_columns <- intersect(names(df), c("coupon1", "coupon2", "coupon3", 
                                            "coupon4", "coupon5", "coupon6", "own_coupon"))
-  
-  # Convert coupon columns to character
   df[coupon_columns] <- lapply(df[coupon_columns], as.character)
-  
-  coupon_columns <- intersect(names(df), c("network_size"))
-  
-  # Convert coupon columns to character
-  df[coupon_columns] <- lapply(df[coupon_columns], as.numeric)
-  
-  coupon_columns <- intersect(names(df), c("hiv"))
-  
-  # Convert coupon columns to character
-  df[coupon_columns] <- lapply(df[coupon_columns], as.numeric)
+ 
+  network_columns <- intersect(names(df), c("network_size"))
+  df[network_columns] <- lapply(df[network_columns], as.numeric)
+
+  hiv_columns <- intersect(names(df), c("hiv"))
+  df[hiv_columns] <- lapply(df[hiv_columns], as.numeric)
   
   
-  coupon_columns <- intersect(names(df), c("gender"))
-  
-  # Convert coupon columns to character
-  df[coupon_columns] <- lapply(df[coupon_columns], as.factor)
+  gender_columns <- intersect(names(df), c("gender"))
+  df[gender_columns] <- lapply(df[gender_columns], as.factor)
   
   
-  coupon_columns <- intersect(names(df), c("vl"))
-  
-  # Convert coupon columns to character
-  df[coupon_columns] <- lapply(df[coupon_columns], as.numeric)
+  vl_columns <- intersect(names(df), c("vl", "vl_result_detectable"))
+  df[vl_columns] <- lapply(df[vl_columns], as.factor)
   
   return(df)
 })
@@ -137,7 +158,7 @@ filteredcleandata <- filteredcleandata %>%
   moz.utils::separate_survey_id() %>% 
   mutate(year = ifelse(survey_id == "BEN2018ACA_FSW", 2008, year))
 
-saveRDS(filteredcleandata, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_2904.rds")
+saveRDS(filteredcleandata, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_1305.rds")
 
 meta_data <- read_csv(paste0(path,  "/",  survey_id, "_meta.csv"))
 
