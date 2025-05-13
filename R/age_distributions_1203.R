@@ -1080,9 +1080,6 @@ age_dat <- single_year_ages %>%
   ungroup() %>% 
   mutate(sex = ifelse(sex == 0, "male", "female"))
 
-spectrum_dat %>% 
-  group_by(iso3, year, )
-
 
 genpop_median_ages <- spectrum_dat %>%
   filter(year %in% dat$year,
@@ -1150,7 +1147,7 @@ genpop_median_ages <- spectrum_dat %>%
 
 formula_pwid <- log(age) ~ 1 + year*sex + f(survey_id, model = "iid")
 
-formula_fswmsm <- log(age) ~ 1 + year + f(survey_id, model = "iid")
+formula_fswmsm <- log(age) ~ 1 + year + f(survey_id, model = "iid") + offset(log(genpop_median))
 
 
 median_age_inladf <- crossing(year = c(1995:2024),
@@ -1174,9 +1171,11 @@ moz.utils::calculate_quantile(genpop_medians_plot_fem$genpop_median, weights = g
 genpop_medians_plot_fem <- age_dat %>% 
   left_join(genpop_median_ages %>% 
               rename(genpop_median = median_age)) %>% 
-  filter(sex == "female") %>%
-  group_by(year) %>%
-  reframe(calculate_quantile(genpop_median, weights = denom, percentage = F))
+  filter(sex == "female")
+
+# %>%
+#   group_by(year) %>%
+#   reframe(calculate_quantile(genpop_median, weights = denom, percentage = F))
 
 fsw_median_age_inladf <- median_age_inladf %>% 
   filter(kp %in% c("FSW", NA),
@@ -1184,14 +1183,13 @@ fsw_median_age_inladf <- median_age_inladf %>%
 
 med_age_mod_fsw <- INLA::inla(formula_fswmsm,
                           family = "gaussian",
-                          E = genpop_median,
-                          data = median_age_inladf %>% 
-                            filter(kp %in% c("FSW", NA),
-                                   sex == "female") ,
+                          data = fsw_median_age_inladf ,
+                            # filter(kp %in% c("FSW", NA),
+                            #        sex == "female") ,
                           control.compute=list(config = TRUE)
                           )
 
-fsw_medianages <- moz.utils::sample_model(med_age_mod_fsw, fsw_median_age_inladf, "median_age") %>% mutate(exp_mean = exp(mean), 
+fsw_medianages <- moz.utils::sample_model(med_age_mod_fsw, median_age_inladf, "age") %>% mutate(exp_mean = exp(mean), 
                                                                                                            exp_lower = exp(lower), 
                                                                                                            exp_upper = exp(upper))
 
@@ -1203,7 +1201,7 @@ fsw_medianages_plot <- fsw_medianages %>%
   geom_point(data = age_dat %>% filter(kp %in% c("FSW")), aes(x = year, y = median_age)) + 
   moz.utils::standard_theme() + 
   labs(x = "Year", y = "Median Age") +
-  geom_line(data = genpop_medians_plot_fem, aes(x = year, y = `0.5`), color = "darkred")
+  geom_line(data = genpop_medians_plot_fem %>% group_by(year) %>% mutate(median = median(genpop_median)), aes(x = year, y = median), color = "darkred")
 
 fsw_age <- single_year_ages %>% filter(kp == "FSW")
 msm_age <- single_year_ages %>% filter(kp == "MSM")
