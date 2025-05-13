@@ -286,7 +286,7 @@ national_tparpt <- sd_report
 
 # comparing genpop distributions
 
-dat2 %>% 
+<- %>% 
   filter(iso3 == "MWI" | iso3 == "MLI") %>%
   ggplot() + 
   geom_line(aes(x = age_group, y = local_tpa, color = survey_id), show.legend = T) + 
