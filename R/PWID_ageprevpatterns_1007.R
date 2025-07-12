@@ -260,8 +260,36 @@ pwid_formulas_countrysurv2 <- list(
     f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
 )
 
+
+pwid_formulas_yearsurveys <- list(
+  
+  mod3 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+    f(id.year.age, model = "generic0",
+      Cmatrix = Q2_msm,
+      extraconstr = list(A = A_combined2_msm, e = e2_msm),
+      rankdef = n_years_msm + n_ages - 1L),
+  
+  mod4 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(survey_id, model = "iid"),
+  
+  mod12 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+    f(id.year.age, model = "generic0",
+      Cmatrix = Q2_msm,
+      extraconstr = list(A = A_combined2_msm, e = e2_msm),
+      rankdef = n_years_msm + n_ages - 1L) + f(survey_id, model = "iid"),
+  
+  mod13 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+    f(id.year.age, model = "generic0",
+      Cmatrix = Q2_msm,
+      extraconstr = list(A = A_combined2_msm, e = e2_msm),
+      rankdef = n_years_msm + n_ages - 1L) + f(id.age_group2, model = "ar1", group = sex2, control.group = list(model = "iid")),
+  
+  mod11 = n ~ 1 + sex + f(id.age_group, model = "ar1") + f(id.age_group2, model = "ar1", group = sex2, control.group = list(model = "iid"))
+)
+
+
+
 formula_labs = data.frame(
-  mod_name = c("mod0","mod1", "mod2", "mod3", "mod4", "mod5", "mod6", "mod7", "mod8", "mod9", "mod10", "mod11"),
+  mod_name = c("mod0","mod1", "mod2", "mod3", "mod4", "mod5", "mod6", "mod7", "mod8", "mod9", "mod10", "mod11", "mod12", "mod13"),
   formula = c("Sex + Year RW2",
               "Sex + Age AR1",
               "Sex + Year RW2 + Age AR1",
@@ -273,8 +301,11 @@ formula_labs = data.frame(
               "Sex + Year RW2 + Age AR1 + Year X Age + Country ICAR + Age X Country",
               "Sex + Year RW2 + Age AR1 + Year X Age\n+ ISO3 ICAR + Survey IID", 
               "Sex + Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age + Survey IID",
-              "Sex + Age AR1 + Age AR1 X Sex")
+              "Sex + Age AR1 + Age AR1 X Sex",
+              "Sex + Year RW2 + Age AR1 + Year X Age + Survey IID",
+              "Sex + Year RW2 + Age AR1 + Year X Age + Sex X Age")
 )
+
 
 run_inla_model_pwid <- function(formula, data, denom, tot_prev) {
   print(formula)
@@ -420,3 +451,44 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
         legend.title = element_text(size = 7),
         strip.text.x = element_text(size = 6)) +
   labs(y = "PWID HIV Prevalence", x = "Age Group")
+
+
+pwid_results_yearsurveys_formulas <- lapply(pwid_formulas_yearsurveys, run_inla_model_pwid, data = pwid_inla_dat)
+
+all_samples_pwid_yearsurveys <- imap_dfr(pwid_results_yearsurveys_formulas, ~ {
+  .x$samples %>%
+    mutate(mod_name = .y)
+}) %>% 
+  left_join(formula_labs)
+
+pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
+  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  left_join(
+    all_samples_pwid_yearsurveys %>% 
+      select(iso3, year, sex, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      mutate(logit_totprev = qlogis(tot_prev),
+             log_or = mean - logit_totprev,
+             or = exp(log_or),
+             prev_lower = plogis(lower),
+             prev_upper = plogis(upper),
+             prev = plogis(mean)) %>%
+      filter(model == "countries")) %>%
+  droplevels() %>% 
+  ggplot() +
+  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex)) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  facet_grid(sex~survey_id) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, size = 6),
+        axis.text.y = element_text( size = 6),
+        axis.title.x = element_text(size = 9),
+        axis.title.y = element_text(size = 9),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 7),
+        strip.text.x = element_text(size = 6)) +
+  labs(y = "PWID HIV Prevalence", x = "Age Group")
+
+
+pwid_results_yearsurveys_formulas$mod11$summary
