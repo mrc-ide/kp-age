@@ -1,6 +1,8 @@
 library(purrr)
 library(INLA)
 library(tidyverse)
+library(sf)
+library(moz.utils)
 
 dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_2105.rds")
 spec_hiv <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/spec_hiv.rds")
@@ -215,42 +217,42 @@ msm_formulas_countrysurv2 <- list(
     f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
 )
 
-msm_formulas <- list(
-  mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2_msm,
-      extraconstr = list(A = A_combined2_msm, e = e2_msm),
-      rankdef = n_years_msm + n_ages - 1L),
-
-  # mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
-  #   f(id.year.age, model = "generic0",
-  #     Cmatrix = Q2_msm,
-  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
-  #     rankdef = n_years_msm + n_ages - 1L),
-  # 
-  # 
-  #   mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid")+
-  #     f(id.year.age, model = "generic0",
-  #       Cmatrix = Q2_msm,
-  #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
-  #       rankdef = n_years_msm + n_ages - 1L) ,
-  # 
-  mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
-    f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2_msm,
-      extraconstr = list(A = A_combined2_msm, e = e2_msm),
-      rankdef = n_years_msm + n_ages - 1L) 
-  # 
-  # mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
-  #   f(id.age_group, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
-  #   f(id.year.age, model = "generic0",
-  #     Cmatrix = Q2_msm,
-  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
-  #     rankdef = n_years_msm + n_ages - 1L)
-  # 
-  
-)
+# msm_formulas <- list(
+#   mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+#     f(id.year.age, model = "generic0",
+#       Cmatrix = Q2_msm,
+#       extraconstr = list(A = A_combined2_msm, e = e2_msm),
+#       rankdef = n_years_msm + n_ages - 1L),
+# 
+#   # mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
+#   #   f(id.year.age, model = "generic0",
+#   #     Cmatrix = Q2_msm,
+#   #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+#   #     rankdef = n_years_msm + n_ages - 1L),
+#   # 
+#   # 
+#   #   mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid")+
+#   #     f(id.year.age, model = "generic0",
+#   #       Cmatrix = Q2_msm,
+#   #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
+#   #       rankdef = n_years_msm + n_ages - 1L) ,
+#   # 
+#   mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
+#     f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
+#     f(id.year.age, model = "generic0",
+#       Cmatrix = Q2_msm,
+#       extraconstr = list(A = A_combined2_msm, e = e2_msm),
+#       rankdef = n_years_msm + n_ages - 1L) 
+#   # 
+#   # mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
+#   #   f(id.age_group, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
+#   #   f(id.year.age, model = "generic0",
+#   #     Cmatrix = Q2_msm,
+#   #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+#   #     rankdef = n_years_msm + n_ages - 1L)
+#   # 
+#   
+# )
 
 formula_labs = data.frame(
   mod_name = c("mod0","mod1", "mod2", "mod3", "mod4", "mod5", "mod6", "mod7", "mod8", "mod9", "mod10"),
@@ -279,7 +281,7 @@ run_inla_model_msm <- function(formula, data, denom, tot_prev) {
   mod <- inla(
     formula = formula,
     Ntrials = denom,
-    offset = qlogis(tot_prev),
+    # offset = qlogis(tot_prev),
     data = data,
     family = "xbinomial",
     control.inla = list(int.strategy = "eb"),
@@ -376,6 +378,8 @@ all_samples_msm_countrysurv2 <- imap_dfr(msm_results_countrysurv2_formulas, ~ {
   left_join(formula_labs)
 
 msm_results_countrysurv2_formulas$mod6$summary
+msm_results_countrysurv2_formulas$mod5$summary
+
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
   select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
@@ -401,43 +405,93 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
   labs(y = "MSM HIV Prevalence", x = "Age Group")
 
 
+msm_inla_dat %>%
+  filter(!is.na(id.year.age)) %>%
+  distinct(year, age_group, id.year.age) %>%
+  arrange(id.year.age) %>%
+  left_join(msm_results_countrysurv2_formulas$mod6$model$summary.random$id.year.age %>% select(id.year.age = ID, mean)) %>% ggplot() + geom_point(aes(x = year, y = mean, color = factor(age_group)), size = 3, shape = 20) + theme_minimal()
+
+
+msm_inla_dat %>%
+  filter(!is.na(age_group)) %>%
+  distinct(age_group, id.age_group) %>%
+  arrange(id.age_group) %>%
+  left_join(msm_results_countrysurv2_formulas$mod6$model$summary.random$id.age_group %>% select(id.age_group = ID, mean)) %>% ggplot() + geom_point(aes(x = age_group, y = mean), size = 3, shape = 20) + theme_minimal()
+
+
+msm_inla_dat %>%
+  filter(!is.na(age_group)) %>%
+  distinct(age_group, id.age_group) %>%
+  arrange(id.age_group) %>%
+  left_join(msm_results_countrysurv2_formulas$mod5$model$summary.random$id.age_group %>% select(id.age_group = ID, mean)) %>% ggplot() + geom_point(aes(x = age_group, y = mean), size = 3, shape = 20) + theme_minimal()
+
+msm_inla_dat %>% filter(!is.na(survey_id)) %>% 
+  group_by(age_group) %>% 
+  summarise(denom = sum(denom),
+            n = sum(n)) %>% 
+  ggplot() + geom_point(aes(x = age_group, y = n))
+
+msm_inla_dat %>% filter(!is.na(survey_id)) %>% 
+  group_by(survey_id, age_group) %>% 
+  summarise(denom = sum(denom),
+            n = sum(n),
+            prev = n/denom) %>% 
+  ungroup() %>% 
+  group_by(survey_id) %>% 
+  mutate(survey_prev = sum(n)/sum(denom)) %>% 
+  ungroup() %>% 
+  mutate(ratio = prev/survey_prev) %>% 
+  mutate(id.age_group = multi.utils::to_int(age_group)) %>% 
+  ggplot() + geom_boxplot(aes(x = age_group, y = ratio)) + geom_hline(yintercept = 1, color = "darkred") + theme_minimal()
+  
+
+msm_inla_dat %>% filter(!is.na(survey_id)) %>% 
+  group_by(survey_id, age_group, tot_prev) %>% 
+  summarise(denom = sum(denom),
+            n = sum(n),
+            prev = n/denom,
+            pr = prev/tot_prev) %>% 
+  ungroup() %>% 
+  ggplot() + geom_boxplot(aes(x = age_group, y = pr)) + geom_hline(yintercept = 1, color = "darkred") +
+  scale_y_log10() +
+theme_minimal()
 
 ## trialling the formula
 
-
-mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
-  f(id.year.age, model = "generic0",
-    Cmatrix = Q2_msm,
-    extraconstr = list(A = A_combined2_msm, e = e2_msm),
-    rankdef = n_years_msm + n_ages - 1L)
-
-mod1 <- n ~ 1 + f(id.year, model = "rw2") + f(id.age_group2, model = "ar1") + 
-  f(id.iso3, model = "besag", graph = national_adj()) + 
-  f(id.age_group, model = "rw2", group = id.iso3, control.group = list(model = "besag",graph = national_adj())) +
- f(id.year.age, model = "generic0", 
-                                                                                                                                            Cmatrix = Q2_msm, extraconstr = list(A = A_combined2_msm, 
-                                                                                                                                                                                 e = e2_msm), rankdef = n_years_msm + n_ages - 1L)
-
-
-mod <- inla(
-  formula = mod1,
-  Ntrials = denom,
-  offset = qlogis(tot_prev),
-  data = msm_inla_dat,
-  family = "xbinomial",
-  control.inla = list(int.strategy = "eb"),
-  control.family = list(link = "logit"),
-  control.compute=list(config = TRUE),
-  verbose = F
-)
-
-model_samples <- moz.utils::sample_model(mod, msm_inla_dat, col = "survey_id")
-
-
-
-
-
-
-
-
-
+# 
+# mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+#   f(id.year.age, model = "generic0",
+#     Cmatrix = Q2_msm,
+#     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+#     rankdef = n_years_msm + n_ages - 1L)
+# 
+# mod1 <- n ~ 1 + f(id.year, model = "rw2") + f(id.age_group2, model = "ar1") + 
+#   f(id.iso3, model = "besag", graph = national_adj()) + 
+#   f(id.age_group, model = "rw2", group = id.iso3, control.group = list(model = "besag",graph = national_adj())) +
+#  f(id.year.age, model = "generic0", 
+#                                                                                                                                             Cmatrix = Q2_msm, extraconstr = list(A = A_combined2_msm, 
+#                                                                                                                                                                                  e = e2_msm), rankdef = n_years_msm + n_ages - 1L)
+# 
+# 
+# mod <- inla(
+#   formula = mod1,
+#   Ntrials = denom,
+#   offset = qlogis(tot_prev),
+#   data = msm_inla_dat,
+#   family = "xbinomial",
+#   control.inla = list(int.strategy = "eb"),
+#   control.family = list(link = "logit"),
+#   control.compute=list(config = TRUE),
+#   verbose = F
+# )
+# 
+# model_samples <- moz.utils::sample_model(mod, msm_inla_dat, col = "survey_id")
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
