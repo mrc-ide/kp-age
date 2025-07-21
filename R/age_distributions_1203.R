@@ -16,7 +16,7 @@ single_year_to_five_year <- function (df, fifteen_to_49 = TRUE)  {
   }
 }
 
-dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_1305.rds") 
+dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_2105.rds") 
 
 spectrum_dat <- readRDS("~/Downloads/2024_spectrum_data.rds") %>%
   bind_rows() %>%
@@ -611,7 +611,7 @@ distribution_plot <- dat %>%
       mutate(distribution = "Duration") %>% 
       rename(variable = duration_estimate) 
     ) %>% 
-  select(survey_id, kp, iso3, year, variable, distribution)  %>% 
+  select(survey_id, kp, iso3, sex, year, variable, distribution)  %>% 
   mutate(kp = factor(kp, levels = c("FSW", "MSM", "PWID", "TGW", "CFSW"))) %>% 
   mutate(x_min = ifelse(distribution == "Age", 15, 0),
          x_max = ifelse(distribution == "Age", 60, 40))

@@ -37,7 +37,7 @@ files_raw <- lapply(survey_id, function(x) {
 
 files <- Filter(Negate(is.na), files)
 
-saveRDS(files, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/orderly_archive_indices/age_duration_hiv_data_extract_1305_archive_indices.rds")
+saveRDS(files, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/orderly_archive_indices/age_duration_hiv_data_extract_2105_archive_indices.rds")
 # Pulls out the relevant bits
 
 # rawdatas <- list()
@@ -158,7 +158,7 @@ filteredcleandata <- filteredcleandata %>%
   moz.utils::separate_survey_id() %>% 
   mutate(year = ifelse(survey_id == "BEN2018ACA_FSW", 2008, year))
 
-saveRDS(filteredcleandata, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_1305.rds")
+saveRDS(filteredcleandata, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_2105.rds")
 
 meta_data <- read_csv(paste0(path,  "/",  survey_id, "_meta.csv"))
 

@@ -63,11 +63,11 @@ n_interactions_year <- n_years * n_ages
 # Sum-to-zero constraint within each year for age effects
 A_sum_age_year <- matrix(0, nrow = n_years, ncol = n_interactions_year)
 
-#  Put this back in when done replicating INLA defauly
-# # Loop over each year to impose sum-to-zero constraint across the 5 age groups
-# for (year in 1:n_years) {
-#   A_sum_age_year[year, ((year - 1) * n_ages + 1):(year * n_ages)] <- 1
-# } # This makes the matrix so row 1 is a 1 for every age for the first year
+ # Put this back in when done replicating INLA defauly
+# Loop over each year to impose sum-to-zero constraint across the 5 age groups
+for (year in 1:n_years) {
+  A_sum_age_year[year, ((year - 1) * n_ages + 1):(year * n_ages)] <- 1
+} # This makes the matrix so row 1 is a 1 for every age for the first year
 
 ## Same in reverse to have sum-to-zero constraints within each age over year
 A_sum_year_age <- matrix(0, nrow = n_ages, ncol = n_interactions_year)

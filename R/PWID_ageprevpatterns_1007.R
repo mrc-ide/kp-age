@@ -26,13 +26,7 @@ dat <- dat %>%
 
 
 
-hivdat_allkp <- crossing(age_group = c("Y015_019", "Y020_024", "Y025_029", "Y030_034", "Y035_039", "Y040_044", "Y045_049"), 
-                         kp_prev2 = 0, 
-                         denom2 = 0, 
-                         n2 = 0, 
-                         hiv = c(0, 1, NA), 
-                         sex = c("male", "female"), survey_id = unique(dat$survey_id)) %>%
-  left_join(dat %>% select(survey_id, iso3, year, kp) %>% distinct()) %>% 
+hivdat_allkp <- dat %>% select(survey_id, iso3, year, kp) %>% distinct() %>% 
   left_join(dat %>% 
   filter(!is.na(hiv)) %>% 
   # !(kp == "FSW" & sex == 0),
@@ -58,7 +52,7 @@ hivdat_allkp <- crossing(age_group = c("Y015_019", "Y020_024", "Y025_029", "Y030
               group_by(iso3, year, sex, age_group) %>% 
               summarise(hivpop = sum(hivpop),
                         totpop = sum(totpop),
-                        tot_prev = hivpop/totpop)) 
+                        tot_prev = hivpop/totpop))
 # filter(!age < 15)
 
 
@@ -128,6 +122,7 @@ pwid_inla_dat <-
     filter(!sex == "everyone") %>%
   mutate(#id.age2 = id.age,
     id.survey_id = multi.utils::to_int(survey_id),
+    id.survey_id2 = id.survey_id,
     id.age_group2 = id.age_group,
     id.age_group2 = ifelse(is.na(survey_id), NA_integer_, id.age_group2),
     id.iso3.year = group_indices(., iso3, year),
@@ -136,8 +131,10 @@ pwid_inla_dat <-
          id.year.age = group_indices(., age_group, year),
          id.age_group3 = id.age_group,
          id.age_group2 =  ifelse(model == "regions", NA_integer_, id.age_group)) %>% 
-  mutate(kp_prev = ifelse(is.na(kp_prev), kp_prev2, kp_prev),
-         sex2 = multi.utils::to_int(sex)) 
+  mutate(sex2 = multi.utils::to_int(sex),
+         sex_int = ifelse(sex == "male", 1, 2),
+         id.age_group.women = ifelse(sex == "female", id.age_group, NA_integer_), 
+         id.age_group3 = ifelse(is.na(survey_id), NA_integer_, id.age_group3)) 
 
 
 
@@ -202,62 +199,96 @@ Q2_pwid <- kronecker(R_age, R_year_pwid)
 ### 
 
 pwid_formulas_simple <- list(
-  mod0 = n ~ 1  + sex + f(id.year, model = "rw2") ,
+mod0 = n ~ 1  + sex + f(id.year, model = "rw2") ,
 
-  mod1 = n ~ 1  + sex + f(id.age_group, model = "ar1"),
+mod1 = n ~ 1  + sex + f(id.age_group, model = "ar1"),
 
-  mod2 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1"),
+mod2 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1"),
 
   mod3 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
     f(id.year.age, model = "generic0",
       Cmatrix = Q2_pwid,
       extraconstr = list(A = A_combined2_pwid, e = e2_pwid),
       rankdef = n_years_pwid + n_ages - 1L),
+
+  # mod11 = n ~ 1 + sex + f(id.age_group, model = "ar1") + f(id.age_group2, model = "ar1", group = sex2, control.group = list(model = "iid")),
+  # mod100  = n ~ 1  + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1", replicate = sex_int) ,
   
-  mod11 = n ~ 1 + sex + f(id.age_group, model = "ar1") + f(id.age_group2, model = "ar1", group = sex2, control.group = list(model = "iid"))
+  # mod100  = n ~ 1  + sex + f(id.year, model = "rw2") + f(id.age_group, model = "rw1", replicate = sex_int) ,
+  
+  mod102  = n ~ 1  + sex + f(id.age_group, model = "rw1", replicate = sex_int) 
+  
+  
+  # mod101 = n ~ 1  + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.age_group.women, model = "ar1")
 )
 
 
 pwid_formulas_countrysurv1 <- list(
-  mod2 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1"),
   
-  mod3 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2_msm,
-      extraconstr = list(A = A_combined2_msm, e = e2_msm),
-      rankdef = n_years_msm + n_ages - 1L),
+  mod103 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(survey_id, model = "iid"),
   
-  mod4 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(survey_id, model = "iid"),
-  
-  mod5 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj())
+  mod104 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj())
 )
 
 pwid_formulas_countrysurv2 <- list(
   
-  mod3 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2_msm,
-      extraconstr = list(A = A_combined2_msm, e = e2_msm),
-      rankdef = n_years_msm + n_ages - 1L),
+  # mod3 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2_msm,
+  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #     rankdef = n_years_msm + n_ages - 1L),
+  # 
+  # mod5 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
+  # 
+  # mod6 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2_msm,
+  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #     rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()),
   
-  mod5 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
-  
-  mod6 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2_msm,
-      extraconstr = list(A = A_combined2_msm, e = e2_msm),
-      rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()),
-  
-  mod7 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + 
+  mod7 = n ~ 1 + sex  + f(id.age_group, model = "ar1") + 
     f(id.iso3, model = "besag", graph = national_adj()) +
     f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())),
   
-  mod8 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2_msm,
-      extraconstr = list(A = A_combined2_msm, e = e2_msm),
-      rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()) +
-    f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
+  mod105 = n ~ 1 + sex + f(id.age_group, model = "ar1") + f(id.survey_id2, model = "iid") + f(id.age_group3, model = "ar1", group = id.survey_id, control.group = list(model = "iid") )
+  
+  # mod8 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2_msm,
+  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #     rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()) +
+  #   f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
+)
+
+
+pwid_formulas_countrysurv2 <- list(
+  
+  # mod3 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2_msm,
+  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #     rankdef = n_years_msm + n_ages - 1L),
+  # 
+  # mod5 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
+  # 
+  # mod6 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2_msm,
+  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #     rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()),
+  
+  mod7 = n ~ 1 + sex + f(id.age_group, model = "ar1") + 
+    f(id.iso3, model = "besag", graph = national_adj()) +
+    f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())),
+  
+  mod105 = n ~ 1 + sex + f(id.age_group, model = "ar1") + f(id.survey_id2, model = "iid") + f(id.age_group3, model = "ar1", group = id.survey_id, control.group = list(model = "iid") )
+  
+  # mod8 = n ~ 1 + sex + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2_msm,
+  #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #     rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()) +
+  #   f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
 )
 
 
@@ -287,9 +318,8 @@ pwid_formulas_yearsurveys <- list(
 )
 
 
-
 formula_labs = data.frame(
-  mod_name = c("mod0","mod1", "mod2", "mod3", "mod4", "mod5", "mod6", "mod7", "mod8", "mod9", "mod10", "mod11", "mod12", "mod13"),
+  mod_name = c("mod0","mod1", "mod2", "mod3", "mod4", "mod5", "mod6", "mod7", "mod8", "mod9", "mod10", "mod11", "mod12", "mod13", "mod100", "mod101", "mod102", "mod103", "mod104", "mod105"),
   formula = c("Sex + Year RW2",
               "Sex + Age AR1",
               "Sex + Year RW2 + Age AR1",
@@ -297,13 +327,19 @@ formula_labs = data.frame(
               "Sex + Year RW2 + Age AR1 + Survey IID",
               "Sex + Year RW2 + Age AR1 + Country ICAR",
               "Sex + Year RW2 + Age AR1 + Year X Age + Country ICAR", 
-              "Sex + Year RW2 + Age AR1 + Country ICAR + Age X Country",
+              "Sex + Age AR1 + Country ICAR + Age X Country",
               "Sex + Year RW2 + Age AR1 + Year X Age + Country ICAR + Age X Country",
               "Sex + Year RW2 + Age AR1 + Year X Age\n+ ISO3 ICAR + Survey IID", 
               "Sex + Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age + Survey IID",
               "Sex + Age AR1 + Age AR1 X Sex",
               "Sex + Year RW2 + Age AR1 + Year X Age + Survey IID",
-              "Sex + Year RW2 + Age AR1 + Year X Age + Sex X Age")
+              "Sex + Year RW2 + Age AR1 + Year X Age + Sex X Age",
+              "Sex + Year + Replicate Age RW1",
+              "Sex + Year + Pooled Age + Women Age",
+              "Sex +  Replicate Age RW1",
+              "Sex + Age + Country ICAR",
+              "Sex + Age + Survey IID",
+              "Sex + Age + Survey IID + Survey IID x Age")
 )
 
 
@@ -315,7 +351,7 @@ run_inla_model_pwid <- function(formula, data, denom, tot_prev) {
   mod <- inla(
     formula = formula,
     Ntrials = denom,
-    # offset = qlogis(tot_prev),
+    offset = qlogis(tot_prev),
     data = data,
     family = "xbinomial",
     control.inla = list(int.strategy = "eb"),
@@ -340,6 +376,15 @@ run_inla_model_pwid <- function(formula, data, denom, tot_prev) {
 # debugonce(run_inla_model_pwid)
 pwid_results_simple_formulas <- lapply(pwid_formulas_simple, run_inla_model_pwid, data = pwid_inla_dat)
 
+pwid_results_simple_formulas$mod100$summary
+pwid_results_simple_formulas$mod102$summary
+
+pwid_results_simple_formulas$mod100$model$summary.random
+pwid_results_simple_formulas$mod102$model$summary.random
+# pwid_results_simple_formulas$mod100$model$summary.random
+
+
+
 all_samples_pwid_simple <- imap_dfr(pwid_results_simple_formulas, ~ {
   .x$samples %>%
     mutate(mod_name = .y)
@@ -360,7 +405,7 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
       filter(model == "countries")) %>%
   droplevels() %>% 
   ggplot() +
-  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex)) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
+  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex), !denom == 0) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
   geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
   geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
   geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
@@ -373,6 +418,41 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
         legend.text = element_text(size = 6),
         legend.title = element_text(size = 7),
         strip.text.x = element_text(size = 6)) +
+  labs(y = "PWID HIV Prevalence", x = "Age Group")
+
+# Log OR scale
+
+pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
+  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  left_join(
+    all_samples_pwid_simple %>% 
+      select(iso3, year, sex, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      mutate(logit_totprev = qlogis(tot_prev),
+             log_or = mean - logit_totprev,
+             or = exp(log_or),
+             prev_lower = plogis(lower),
+             prev_upper = plogis(upper),
+             prev = plogis(mean),
+             log_or_lower = lower - logit_totprev,
+             log_or_upper = upper - logit_totprev) %>%
+      filter(model == "countries")) %>%
+  droplevels() %>% 
+  ggplot() +
+  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex), !denom == 0) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = (kp_prev/(1-kp_prev))/(tot_prev/(1-tot_prev)), size = denom)) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = exp(log_or), color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = exp(log_or_lower), ymax = exp(log_or_upper), fill = formula), alpha = 0.3) +
+  # geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_hline(aes(yintercept = 1), color = "darkred", linetype = "dashed") +
+  facet_grid(sex~survey_id) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, size = 6),
+        axis.text.y = element_text( size = 6),
+        axis.title.x = element_text(size = 9),
+        axis.title.y = element_text(size = 9),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 7),
+        strip.text.x = element_text(size = 6)) +
+  scale_y_log10() +
   labs(y = "PWID HIV Prevalence", x = "Age Group")
 
 
@@ -399,7 +479,7 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
       filter(model == "countries")) %>%
   droplevels() %>% 
   ggplot() +
-  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex)) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
+  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex), !denom == 0) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
   geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
   geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
   geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
@@ -413,6 +493,44 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
         legend.title = element_text(size = 7),
         strip.text.x = element_text(size = 6)) +
   labs(y = "PWID HIV Prevalence", x = "Age Group")
+
+
+# Log OR scale
+
+pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
+  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  left_join(
+    all_samples_pwid_countrysurv1 %>% 
+      select(iso3, year, sex, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      mutate(logit_totprev = qlogis(tot_prev),
+             log_or = mean - logit_totprev,
+             or = exp(log_or),
+             prev_lower = plogis(lower),
+             prev_upper = plogis(upper),
+             prev = plogis(mean),
+             log_or_lower = lower - logit_totprev,
+             log_or_upper = upper - logit_totprev) %>%
+      filter(model == "countries")) %>%
+  droplevels() %>% 
+  ggplot() +
+  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex), !denom == 0) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = (kp_prev/(1-kp_prev))/(tot_prev/(1-tot_prev)), size = denom)) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = exp(log_or), color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = exp(log_or_lower), ymax = exp(log_or_upper), fill = formula), alpha = 0.3) +
+  # geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_hline(aes(yintercept = 1), color = "darkred", linetype = "dashed") +
+  facet_grid(sex~survey_id) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, size = 6),
+        axis.text.y = element_text( size = 6),
+        axis.title.x = element_text(size = 9),
+        axis.title.y = element_text(size = 9),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 7),
+        strip.text.x = element_text(size = 6)) +
+  scale_y_log10() +
+  labs(y = "PWID HIV Prevalence", x = "Age Group")
+
+
 
 
 pwid_results_countrysurv2_formulas <- lapply(pwid_formulas_countrysurv2, run_inla_model_pwid, data = pwid_inla_dat)
@@ -437,7 +555,7 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
       filter(model == "countries")) %>%
   droplevels() %>% 
   ggplot() +
-  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex)) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
+  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex), !denom == 0) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
   geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
   geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
   geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
@@ -453,32 +571,29 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
   labs(y = "PWID HIV Prevalence", x = "Age Group")
 
 
-pwid_results_yearsurveys_formulas <- lapply(pwid_formulas_yearsurveys, run_inla_model_pwid, data = pwid_inla_dat)
-
-all_samples_pwid_yearsurveys <- imap_dfr(pwid_results_yearsurveys_formulas, ~ {
-  .x$samples %>%
-    mutate(mod_name = .y)
-}) %>% 
-  left_join(formula_labs)
+# Log OR scale
 
 pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
   select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
   left_join(
-    all_samples_pwid_yearsurveys %>% 
+    all_samples_pwid_countrysurv2 %>% 
       select(iso3, year, sex, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              or = exp(log_or),
              prev_lower = plogis(lower),
              prev_upper = plogis(upper),
-             prev = plogis(mean)) %>%
+             prev = plogis(mean),
+             log_or_lower = lower - logit_totprev,
+             log_or_upper = upper - logit_totprev) %>%
       filter(model == "countries")) %>%
   droplevels() %>% 
   ggplot() +
-  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex)) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = kp_prev)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_point(data = pwid_inla_dat %>% filter(!is.na(survey_id) | is.na(sex), !denom == 0) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = (kp_prev/(1-kp_prev))/(tot_prev/(1-tot_prev)), size = denom)) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = exp(log_or), color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = exp(log_or_lower), ymax = exp(log_or_upper), fill = formula), alpha = 0.3) +
+  # geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_hline(aes(yintercept = 1), color = "darkred", linetype = "dashed") +
   facet_grid(sex~survey_id) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 90, size = 6),
@@ -488,7 +603,22 @@ pwid_inla_dat %>% filter(!(is.na(survey_id))) %>%
         legend.text = element_text(size = 6),
         legend.title = element_text(size = 7),
         strip.text.x = element_text(size = 6)) +
+  scale_y_log10() +
   labs(y = "PWID HIV Prevalence", x = "Age Group")
 
-
 pwid_results_yearsurveys_formulas$mod11$summary
+
+
+
+
+pwid_dat %>% mutate(kp_prev = n/denom) %>% left_join(
+  pwid_dat %>% group_by(survey_id, sex, hiv) %>% summarise(n = sum(n, na.rm = T), denom = sum(denom, na.rm = T)) %>% ungroup() %>% group_by(survey_id, sex) %>% summarise(prev = n[hiv == 1]/sum(denom)) %>% filter(!is.na(sex))
+) %>% 
+  mutate(prev_ratio = kp_prev/prev) %>% 
+  filter(hiv == 1 & sex %in% c("male", "female")) %>% 
+  ggplot() + 
+  geom_point(aes(x = age_group, y = prev_ratio, color = sex, size = denom)) +
+  geom_hline(aes(yintercept = 1), color = "darkred", linetype = "dashed") +
+  scale_y_log10() +
+  facet_wrap(~survey_id) + 
+  theme_minimal()

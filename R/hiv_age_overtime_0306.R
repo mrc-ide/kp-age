@@ -2,6 +2,7 @@ library(tidyverse)
 library(INLA)
 library(dfertility)
 library(moz.utils)
+library(sf)
 
 dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/age_duration_hiv_data_extract_2105.rds")
 
@@ -65,9 +66,9 @@ hivdat_allkp <- dat %>%
   filter(!age < 15)
   
 
-crossing(hiv = c(1, 0),
-         age = c(15:49)) %>% 
-  left_join(hivdat_allkp)
+
+# data.frame(hiv = c(0:1),
+         # n = c(2, 8))
 
 
 fsw_dat <- hivdat_allkp %>% filter(kp == "FSW")
@@ -117,7 +118,9 @@ fsw_hivtime_inla <- spec_hiv %>%
   select(region, iso3, year, age, tot_prev, model, n, denom, or_obs, genpop_odds, kp_odds, survey_id, sex, kp, id.year, id.age, id.year.age, id.year2) %>% 
   mutate(id.age2 = id.age,
          id.survey_id = multi.utils::to_int(survey_id),
-         id.age2 = ifelse(is.na(survey_id), NA_integer_, id.age2)) 
+         id.age2 = ifelse(is.na(survey_id), NA_integer_, id.age2)) %>% 
+  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>% 
+  mutate(id.iso3.age = group_indices(., age, iso3))
 
 
 
@@ -126,6 +129,9 @@ n_ages <- length(unique(fsw_hivtime_inla$age))
 n_years <- length(unique(fsw_hivtime_inla$year))
 n_interactions_year <- n_years * n_ages
 
+
+n_iso3 <- length(unique(fsw_hivtime_inla$iso3))
+n_interactions_country <- n_iso3 * n_ages
 
 # Sum-to-zero constraint within each year for age effects
 A_sum_age_year <- matrix(0, nrow = n_years, ncol = n_interactions_year)
@@ -146,11 +152,79 @@ for (age in 1:n_ages) {
 A_combined2 <- rbind(A_sum_year_age, A_sum_age_year) # Combining our matrices for the interaction ## Add back in when not matching INLA defaults
 e2 <- matrix(0, nrow(A_combined2), nrow = 1) 
 
+
+
+# Sum-to-zero constraint within each year for age effects
+A_sum_age_iso3 <- matrix(0, nrow = n_iso3, ncol = n_interactions_country)
+
+# Put this back in when done replicating INLA defauly
+# Loop over each year to impose sum-to-zero constraint across the 5 age groups
+for (iso3 in 1:n_iso3) {
+  A_sum_age_iso3[iso3, ((iso3 - 1) * n_ages + 1):(iso3 * n_ages)] <- 1
+} # This makes the matrix so row 1 is a 1 for every age for the first year
+
+## Same in reverse to have sum-to-zero constraints within each age over year
+A_sum_iso3_age <- matrix(0, nrow = n_ages, ncol = n_interactions_country)
+
+for (age in 1:n_ages) {
+  A_sum_iso3_age[age, ((age - 1) * n_iso3 + 1):(age * n_iso3)] <- 1
+} # This makes the matrix so row 1 is a 1 for ever year for the first age
+
+A_combined3 <- rbind(A_sum_iso3_age, A_sum_age_iso3) # Combining our matrices for the interaction ## Add back in when not matching INLA defaults
+e3 <- matrix(0, nrow(A_combined3), nrow = 1) 
+
 ## JIE: changed adjust_diagonal = FALSE
 R_year <- dfertility::make_rw_structure_matrix(n_years, 2, FALSE)
 R_age <- dfertility::make_rw_structure_matrix(n_ages, 2, FALSE)
+
+
+# R_iso3 <- dfertility::make_adjacency_matrix(read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% st_make_valid(), 0)
+R_iso3 <- make_adjacency_matrix(read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% st_make_valid(), 0)
+
+## Bonked out area sort order... 
+make_adjacency_matrix <- function(areas, model_level) {
+  
+  if(length(model_level) > 1) {
+    filtered_areas <- Map(extract_model_level, areas, model_level) %>%
+      dplyr::bind_rows()
+  } else {
+    filtered_areas <- areas %>%
+      dplyr::bind_rows() %>%
+      dplyr::filter(area_level == model_level)
+  }
+  
+  sh <- filtered_areas %>%
+    dplyr::group_by(iso3) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(area_idx = dplyr::row_number())
+  
+  #' Neighbor list
+  nb <- sh %>%
+    # st_as_sf() %>%
+    # methods::as("Spatial") %>%
+    spdep::poly2nb() %>%
+    `names<-`(sh$area_idx)
+  
+  names(nb) <- sh$area_id
+  
+  
+  nb <- lapply(nb, as.integer)
+  class(nb) <- "nb"
+  
+  adj <- spdep::nb2mat(nb, zero.policy=TRUE, style="B")
+  R_spatial <- INLA::inla.scale.model(
+    diag(rowSums(adj)) - 0.99*adj,
+    constr = list(A = matrix(1, 1, nrow(adj)), e = 0)
+  )
+  
+  return(R_spatial)
+}
+
+
 # R_age <- as(diag(1, n_ages), "sparseMatrix")
 Q2 <- kronecker(R_age, R_year)
+
+Q3 <- kronecker(R_age, R_iso3)
 
 # custom_mod <- inla(n ~ 1
 #                    + f(id.year.age, model = "generic0", Cmatrix = Q2, extraconstr = list(A = A_sum_year_age, e = e2)),
@@ -169,12 +243,27 @@ jeff_formula <- n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f
 
 geog_graph = read_sf(moz.utils::national_areas()) %>% mutate(iso3 = area_id) %>% rename(id.iso3_2 = id.iso3)
 
-jeff_formula_survey <- n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(iso3, model = "iid") + f(id.year.age, model = "generic0",
-      Cmatrix = Q2,
-      extraconstr = list(A = A_combined2, e = e2),
-      rankdef = n_years + n_ages - 1L) + 
-  f(id.age2, model = "ar1", group = id.iso3, control.group = list(model = "besag", graph = ))
+
+
+jeff_formula_survey <- n ~ 1 + #f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(iso3, model = "iid") + 
+  # f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2,
+  #     extraconstr = list(A = A_combined2, e = e2),
+  #     rankdef = n_years + n_ages - 1L) + 
+  f(id.age2, model = "ar1", group = id.iso3, control.group = list(model = "besag", graph = national_adj() ))
   # f(id.age2, model = "ar1", group = id.survey_id, control.group = list(model = "iid"))
+
+
+jeff_formula_survey <- n ~ 1 + #f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(iso3, model = "iid") + 
+  f(id.iso3.age, model = "generic0",
+      Cmatrix = Q3,
+      extraconstr = list(A = A_combined3, e = e3),
+      rankdef = n_iso3 + n_ages - 1L) 
+  # f(id.age2, model = "ar1", group = id.iso3, control.group = list(model = "besag", graph = national_adj() ))
+
+jeff_formula_survey <- n ~ 1 + f(id.iso3, model = "besag", graph = national_adj())
+
+
 
 
 
@@ -232,7 +321,8 @@ fsw_hivtime_mod_jf <- inla(formula = jeff_formula_survey,
                         family = "xbinomial",
                         control.inla = list(int.strategy = "eb"),
                         control.family = list(link = "logit"),
-                        control.compute=list(config = TRUE)
+                        control.compute=list(config = TRUE),
+                        verbose = T
 )
 
 plot(fsw_hivtime_mod_jf$summary.random$id.year$mean)
