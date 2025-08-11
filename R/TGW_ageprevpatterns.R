@@ -54,13 +54,13 @@ hivdat_allkp <- dat %>%
 # filter(!age < 15)
 
 
-cfsw_dat <- hivdat_allkp %>% filter(kp == "CFSW")
+tgw_dat <- hivdat_allkp %>% filter(kp == "TGW")
 
-cfsw_dat_iso3 <- unique(cfsw_dat$iso3)
+tgw_dat_iso3 <- unique(tgw_dat$iso3)
 
-pred_cfsw <- spec_hiv %>%
+pred_tgw <- spec_hiv %>%
   kitchen.sink::single_year_to_five_year() %>% 
-  filter( #iso3 %in% cfsw_dat_iso3,
+  filter( #iso3 %in% tgw_dat_iso3,
     sex == "male",
     # age %in% 15:49,
     year %in% 2010:2025) %>%
@@ -80,10 +80,10 @@ pred_cfsw <- spec_hiv %>%
                 totpop = sum(totpop),
                 tot_prev = hivpop/totpop) %>% 
       ungroup() %>% 
-      filter( #iso3 %in% cfsw_dat_iso3,
-        sex == "male",
+      filter( #iso3 %in% tgw_dat_iso3,
+        sex == "female",
         # age %in% 15:49,
-        year %in% 2002:2025) %>%
+        year %in% 2010:2025) %>%
       mutate(model = "countries") %>%
       left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>% 
       mutate(id.iso3.age = group_indices(., age_group, id.iso3))
@@ -92,7 +92,7 @@ pred_cfsw <- spec_hiv %>%
   mutate(id.age_group = factor(multi.utils::to_int(age_group))
   )
 
-data_prep_cfsw <- cfsw_dat %>%
+data_prep_tgw <- tgw_dat %>%
   left_join(moz.utils::region()) %>%
   pivot_wider(
     names_from = hiv,
@@ -106,12 +106,12 @@ data_prep_cfsw <- cfsw_dat %>%
   # kitchen.sink::single_year_to_five_year(age) %>% 
   # age %in% 15:49) %>%
   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>%
-  left_join(pred_cfsw %>% filter(!is.na(id.iso3.age)) %>% distinct(iso3, age_group, id.iso3.age)) %>% 
+  left_join(pred_tgw %>% filter(!is.na(id.iso3.age)) %>% distinct(iso3, age_group, id.iso3.age)) %>% 
   mutate(id.age_group = factor(multi.utils::to_int(age_group)))
 
 
-cfsw_inla_dat <- pred_cfsw %>%
-  bind_rows(data_prep_cfsw) %>% 
+tgw_inla_dat <- pred_tgw %>%
+  bind_rows(data_prep_tgw) %>% 
   mutate(id.year = multi.utils::to_int(year),
          id.year2 = id.year+1) %>% 
   mutate(kp_prev = n/denom,
@@ -120,48 +120,48 @@ cfsw_inla_dat <- pred_cfsw %>%
          or_obs = kp_odds/genpop_odds) %>% 
   mutate(id.survey_id = multi.utils::to_int(survey_id),
          id.age_group = multi.utils::to_int(id.age_group),
-    id.age_group2 = ifelse(is.na(survey_id), NA_integer_, id.age_group),
-    id.iso3.year = group_indices(., iso3, year),
-    id.iso3.year = ifelse(is.na(iso3), NA_integer_, id.iso3.year)) %>% 
+         id.age_group2 = ifelse(is.na(survey_id), NA_integer_, id.age_group),
+         id.iso3.year = group_indices(., iso3, year),
+         id.iso3.year = ifelse(is.na(iso3), NA_integer_, id.iso3.year)) %>% 
   #id.age2 = ifelse(is.na(survey_id), NA_integer_, id.age2)) %>% 
   # kitchen.sink::single_year_to_five_year(age) %>% 
   mutate(id.age_group = factor(multi.utils::to_int(age_group)),
          id.year.age = group_indices(., age_group, year)
-         ) 
+  ) 
 
 ## Generic 0 set-up
-n_ages <- length(unique(pred_cfsw$age))
-n_ages <- length(unique(pred_cfsw$age_group))
-n_years_cfsw <- length(unique(pred_cfsw$year))
+n_ages <- length(unique(pred_tgw$age))
+n_ages <- length(unique(pred_tgw$age_group))
+n_years_tgw <- length(unique(pred_tgw$year))
 
-n_interactions_year_cfsw <- n_years_cfsw * n_ages
+n_interactions_year_tgw <- n_years_tgw * n_ages
 
 # Sum-to-zero constraint within each year for age effects
-A_sum_age_year_cfsw <- matrix(0, nrow = n_years_cfsw, ncol = n_interactions_year_cfsw)
+A_sum_age_year_tgw <- matrix(0, nrow = n_years_tgw, ncol = n_interactions_year_tgw)
 
-for (year in 1:n_years_cfsw) {
-  A_sum_age_year_cfsw[year, ((year - 1) * n_ages + 1):(year * n_ages)] <- 1
+for (year in 1:n_years_tgw) {
+  A_sum_age_year_tgw[year, ((year - 1) * n_ages + 1):(year * n_ages)] <- 1
 } 
 
 ## Same in reverse to have sum-to-zero constraints within each age over year
-A_sum_year_age_cfsw <- matrix(0, nrow = n_ages, ncol = n_interactions_year_cfsw)
+A_sum_year_age_tgw <- matrix(0, nrow = n_ages, ncol = n_interactions_year_tgw)
 
 for (age in 1:n_ages) {
-  A_sum_year_age_cfsw[age, ((age - 1) * n_years_cfsw + 1):(age * n_years_cfsw)] <- 1
+  A_sum_year_age_tgw[age, ((age - 1) * n_years_tgw + 1):(age * n_years_tgw)] <- 1
 }
 
-A_combined2_cfsw <- rbind(A_sum_year_age_cfsw, A_sum_age_year_cfsw) 
-e2_cfsw <- matrix(0, nrow(A_combined2_cfsw), nrow = 1) 
+A_combined2_tgw <- rbind(A_sum_year_age_tgw, A_sum_age_year_tgw) 
+e2_tgw <- matrix(0, nrow(A_combined2_tgw), nrow = 1) 
 
 R_age <- dfertility::make_rw_structure_matrix(n_ages, 2, FALSE) 
-R_year_cfsw <- dfertility::make_rw_structure_matrix(n_years_cfsw, 2, FALSE) 
+R_year_tgw <- dfertility::make_rw_structure_matrix(n_years_tgw, 2, FALSE) 
 
-Q2_cfsw <- kronecker(R_age, R_year_cfsw)
+Q2_tgw <- kronecker(R_age, R_year_tgw)
 
 
 ### 
 
-cfsw_formulas_simple <- list(
+tgw_formulas_simple <- list(
   mod0 = n ~ 1 + f(id.year, model = "rw2"),
   
   mod1 = n ~ 1 + f(id.age_group, model = "ar1"),
@@ -170,12 +170,12 @@ cfsw_formulas_simple <- list(
   # 
   # mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
   #   f(id.year.age, model = "generic0",
-  #     Cmatrix = Q2_cfsw,
-  #     extraconstr = list(A = A_combined2_cfsw, e = e2_cfsw),
-  #     rankdef = n_years_cfsw + n_ages - 1L)
+  #     Cmatrix = Q2_tgw,
+  #     extraconstr = list(A = A_combined2_tgw, e = e2_tgw),
+  #     rankdef = n_years_tgw + n_ages - 1L)
 )
 
-cfsw_formulas_countrysurv1 <- list(
+tgw_formulas_countrysurv1 <- list(
   
   mod3 = n ~ 1 + f(survey_id, model = "iid") + f(id.age_group, model = "ar1") +
     f(id.age_group2, model = "rw2",  group = id.survey_id, control.group = list(model = "iid")),
@@ -210,7 +210,7 @@ formula_labs = data.frame(
 
 
 
-run_inla_model_cfsw <- function(formula, data, denom, tot_prev) {
+run_inla_model_tgw <- function(formula, data, denom, tot_prev) {
   print(formula)
   
   # data <- data %>% filter(!model == "regions")
@@ -240,19 +240,19 @@ run_inla_model_cfsw <- function(formula, data, denom, tot_prev) {
   )
 }
 
-# debugonce(run_inla_model_cfsw)
-cfsw_results_simple_formulas <- lapply(cfsw_formulas_simple, run_inla_model_cfsw, data = cfsw_inla_dat)
+# debugonce(run_inla_model_tgw)
+tgw_results_simple_formulas <- lapply(tgw_formulas_simple, run_inla_model_tgw, data = tgw_inla_dat)
 
-all_samples_cfsw_simple <- imap_dfr(cfsw_results_simple_formulas, ~ {
+all_samples_tgw_simple <- imap_dfr(tgw_results_simple_formulas, ~ {
   .x$samples %>%
     mutate(mod_name = .y)
 }) %>% 
   left_join(formula_labs)
 
-cfsw_inla_dat %>% filter(!(is.na(survey_id))) %>%
+tgw_inla_dat %>% filter(!(is.na(survey_id))) %>%
   select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
   left_join(
-    all_samples_cfsw_simple %>% 
+    all_samples_tgw_simple %>% 
       select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
@@ -269,14 +269,87 @@ cfsw_inla_dat %>% filter(!(is.na(survey_id))) %>%
   facet_wrap(year~survey_id) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
-  labs(y = "CFSW HIV Prevalence", x = "Age Group")
+  labs(y = "TGW HIV Prevalence", x = "Age Group")
 
 
 
-cfsw_inla_dat %>% filter(!(is.na(survey_id))) %>%
+
+tgw_inla_dat  %>% filter(!(is.na(survey_id))) %>%
+  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  left_join(
+    all_samples_tgw_simple %>% 
+      select(iso3, year, sex, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      mutate(logit_totprev = qlogis(tot_prev),
+             log_or = mean - logit_totprev,
+             or = exp(log_or),
+             prev_lower = plogis(lower),
+             prev_upper = plogis(upper),
+             prev = plogis(mean),
+             log_or_lower = lower - logit_totprev,
+             log_or_upper = upper - logit_totprev) %>%
+      filter(model == "countries")) %>%
+  droplevels() %>% 
+  ggplot() +
+  geom_point(data = tgw_inla_dat %>% filter(!is.na(survey_id) | is.na(sex), !denom == 0) %>% mutate(sex = factor(sex))  %>% droplevels()  , aes(x = age_group, y = (kp_prev/(1-kp_prev))/(tot_prev/(1-tot_prev)), size = denom)) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = exp(log_or), color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = exp(log_or_lower), ymax = exp(log_or_upper), fill = formula), alpha = 0.3) +
+  # geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_hline(aes(yintercept = 1), color = "darkred", linetype = "dashed") +
+  facet_wrap(~survey_id) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, size = 6),
+        axis.text.y = element_text( size = 6),
+        axis.title.x = element_text(size = 9),
+        axis.title.y = element_text(size = 9),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 7),
+        strip.text.x = element_text(size = 6)) +
+  scale_y_log10() +
+  labs(y = "TGW HIV Prevalence", x = "Age Group")
+
+
+
+
+# COuntrysurvs1
+tgw_results_countrysurv1_formulas <- lapply(tgw_formulas_countrysurv1, run_inla_model_tgw, data = tgw_inla_dat)
+
+
+tgw_results_countrysurv1_formulas$mod5$summary
+all_samples_tgw_countrysurv1 <- imap_dfr(tgw_results_countrysurv1_formulas, ~ {
+  .x$samples %>%
+    mutate(mod_name = .y)
+}) %>% 
+  left_join(formula_labs)
+
+
+
+tgw_inla_dat %>% filter(!(is.na(survey_id))) %>%
+  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  left_join(
+    all_samples_tgw_countrysurv1 %>% 
+      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      mutate(logit_totprev = qlogis(tot_prev),
+             log_or = mean - logit_totprev,
+             or = exp(log_or),
+             prev_lower = plogis(lower),
+             prev_upper = plogis(upper),
+             prev = plogis(mean)) %>%
+      filter(model == "countries")) %>%
+  ggplot() +
+  geom_point(aes(x = age_group, y = kp_prev)) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
+  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  facet_wrap(~survey_id) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45)) + 
+  labs(y = "TGW HIV Prevalence", x = "Age Group")
+
+
+tgw_inla_dat %>% filter(!(is.na(survey_id))) %>%
   select(survey_id, iso3, year, kp_prev, age_group, kp_odds, or_obs) %>%
   left_join(
-    all_samples_cfsw_simple %>% 
+    all_samples_tgw_countrysurv1 %>% 
       select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
@@ -298,69 +371,4 @@ cfsw_inla_dat %>% filter(!(is.na(survey_id))) %>%
   scale_y_log10() +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
-  labs(y = "CFSW:Genpop OR", x = "Age Group")
-
-
-
-# COuntrysurvs1
-cfsw_results_countrysurv1_formulas <- lapply(cfsw_formulas_countrysurv1, run_inla_model_cfsw, data = cfsw_inla_dat)
-
-
-cfsw_results_countrysurv1_formulas$mod6$summary
-all_samples_cfsw_countrysurv1 <- imap_dfr(cfsw_results_countrysurv1_formulas, ~ {
-  .x$samples %>%
-    mutate(mod_name = .y)
-}) %>% 
-  left_join(formula_labs)
-
-
-
-cfsw_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
-  left_join(
-    all_samples_cfsw_countrysurv1 %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
-      mutate(logit_totprev = qlogis(tot_prev),
-             log_or = mean - logit_totprev,
-             or = exp(log_or),
-             prev_lower = plogis(lower),
-             prev_upper = plogis(upper),
-             prev = plogis(mean)) %>%
-      filter(model == "countries" , mod_name == "mod6") ) %>%
-  ggplot() +
-  geom_point(aes(x = age_group, y = kp_prev)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
-  facet_wrap(~survey_id) +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 45)) + 
-  labs(y = "CFSW HIV Prevalence", x = "Age Group")
-
-
-cfsw_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds, or_obs, n) %>%
-  left_join(
-    all_samples_cfsw_countrysurv1 %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
-      mutate(logit_totprev = qlogis(tot_prev),
-             log_or = mean - logit_totprev,
-             log_loweror = lower - logit_totprev,
-             log_upperor = upper - logit_totprev,
-             or = exp(log_or),
-             or_lower = exp(log_loweror),
-             or_upper = exp(log_upperor),
-             prev_lower = plogis(lower),
-             prev_upper = plogis(upper),
-             prev = plogis(mean)) %>%
-      filter(model == "countries", mod_name == "mod6")) %>%
-  ggplot() +
-  geom_point(aes(x = age_group, y = or_obs, size  = n)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = or, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = or_lower, ymax = or_upper, fill = formula), alpha = 0.3) +
-  geom_hline(yintercept = 1, color = "darkred", linetype = "dashed") +
-  facet_wrap(~survey_id) +
-  scale_y_log10() +
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 45)) + 
-  labs(y = "CFSW:Genpop OR", x = "Age Group")
+  labs(y = "TGW:Genpop OR", x = "Age Group")
