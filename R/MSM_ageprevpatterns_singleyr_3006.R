@@ -30,11 +30,11 @@ hivdat_allkp <- dat %>%
   filter(!is.na(hiv)) %>% 
   # !(kp == "FSW" & sex == 0),
   # !(kp == "MSM" & sex == 1)) %>%
-  kitchen.sink::single_year_to_five_year() %>% 
-  group_by(survey_id, iso3, sex, year, kp, age_group, hiv) %>% 
+  # kitchen.sink::single_year_to_five_year() %>% 
+  group_by(survey_id, iso3, sex, year, kp, age, hiv) %>% 
   summarise(n = n()) %>% 
   ungroup() %>% 
-  group_by(survey_id, iso3, sex, year, kp, age_group) %>% 
+  group_by(survey_id, iso3, sex, year, kp, age) %>% 
   mutate(denom = sum(n)) %>% 
   ungroup() %>% 
   mutate(sex = case_when(sex == 1 ~ "female",
@@ -47,14 +47,14 @@ hivdat_allkp <- dat %>%
                          kp == "TGM/Other" ~ "male")) %>%
   left_join(spec_hiv %>% 
               kitchen.sink::single_year_to_five_year()  %>% 
-              group_by(iso3, year, sex, age_group) %>% 
+              group_by(iso3, year, sex, age) %>% 
               summarise(hivpop = sum(hivpop),
                         totpop = sum(totpop),
                         tot_prev = hivpop/totpop)) 
 # filter(!age < 15)
 
 
-msm_dat <- hivdat_allkp %>% filter(kp == "MSM")
+msm_dat <- hivdat_allkp %>% filter(kp == "MSM") %>% filter(!sex == "female")
 
 msm_dat_iso3 <- unique(msm_dat$iso3)
 
@@ -66,7 +66,7 @@ pred_msm <- spec_hiv %>%
     year %in% 2010:2025) %>%
   left_join(moz.utils::region()) %>%
   bind_rows(mutate(., region = "SSA")) %>%
-  group_by(year, age_group, region) %>%
+  group_by(year, age, region) %>%
   summarise(hivpop = sum(hivpop),
             totpop = sum(totpop),
             tot_prev = hivpop/totpop) %>%
@@ -74,8 +74,8 @@ pred_msm <- spec_hiv %>%
   mutate(model = "regions") %>%
   bind_rows(
     spec_hiv %>% 
-      kitchen.sink::single_year_to_five_year() %>% 
-      group_by(iso3, year, sex, age_group) %>% 
+      # kitchen.sink::single_year_to_five_year() %>% 
+      group_by(iso3, year, sex, age) %>% 
       summarise(hivpop = sum(hivpop),
                 totpop = sum(totpop),
                 tot_prev = hivpop/totpop) %>% 
@@ -86,10 +86,26 @@ pred_msm <- spec_hiv %>%
         year %in% 2010:2025) %>%
       mutate(model = "countries") %>%
       left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>% 
-      mutate(id.iso3.age = group_indices(., age_group, id.iso3))
+      mutate(id.iso3.age = group_indices(., age, id.iso3))
   ) %>%
+  # bind_rows(
+  #   spec_hiv %>%
+  #     filter(iso3 %in% msm_dat$iso3,
+  #            sex == "male",
+  #            year %in% 2010:2025) %>%
+  #     group_by(iso3, year, sex, age) %>%
+  #     summarise(hivpop = sum(hivpop),
+  #               totpop = sum(totpop),
+  #               tot_prev = hivpop/totpop) %>%
+  #     ungroup() %>%
+  #     left_join(moz.utils::region()) %>%
+  #     group_by(region, age, year, sex) %>%
+  #     summarise(tot_prev = median(tot_prev)) %>%
+  #     ungroup() %>%
+  #     mutate(model = "survey-specific regions")
+  # ) %>%
   mutate(denom = 1) %>% 
-  mutate(id.age_group = factor(multi.utils::to_int(age_group))
+  mutate(id.age = factor(multi.utils::to_int(age))
   )
 
 data_prep_msm <- msm_dat %>%
@@ -104,10 +120,10 @@ data_prep_msm <- msm_dat %>%
          n_neg = hiv_0) %>% 
   mutate(denom = n + n_neg) %>% 
   # kitchen.sink::single_year_to_five_year(age) %>% 
-  # age %in% 15:49) %>%
+  filter(age %in% 15:49) %>%
   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>%
-  left_join(pred_msm %>% filter(!is.na(id.iso3.age)) %>% distinct(iso3, age_group, id.iso3.age)) %>% 
-  mutate(id.age_group = factor(multi.utils::to_int(age_group)))
+  left_join(pred_msm %>% filter(!is.na(id.iso3.age)) %>% distinct(iso3, age, id.iso3.age)) %>% 
+  mutate(id.age = factor(multi.utils::to_int(age)))
 
 
 msm_inla_dat <- pred_msm %>%
@@ -122,25 +138,23 @@ msm_inla_dat <- pred_msm %>%
          or_obs = kp_odds/genpop_odds) %>% 
   mutate(#id.age2 = id.age,
     id.survey_id = multi.utils::to_int(survey_id),
-    id.age_group2 = id.age_group,
-    id.age_group2 = ifelse(is.na(survey_id), NA_integer_, id.age_group2),
+    id.age2 = id.age,
+    id.age2 = ifelse(is.na(survey_id), NA_integer_, id.age2),
     id.iso3.year = group_indices(., iso3, year),
     id.iso3.year = ifelse(is.na(iso3), NA_integer_, id.iso3.year)) %>% 
   #id.age2 = ifelse(is.na(survey_id), NA_integer_, id.age2)) %>% 
   # kitchen.sink::single_year_to_five_year(age) %>% 
-  mutate(id.age_group = factor(multi.utils::to_int(age_group)),
-         id.year.age = group_indices(., age_group, year),
-         id.age_group2 =  ifelse(model == "regions", NA_integer_, id.age_group)) %>% 
-  filter(!is.na(age_group)) %>% 
-  filter(!sex == "female")
-
+  mutate(id.age = factor(multi.utils::to_int(age)),
+         id.year.age = group_indices(., age, year),
+         id.age2 =  ifelse(model == "regions", NA_integer_, id.age)) %>% 
+  filter(!is.na(age)) 
 
 
 
 
 ## Generic 0 set-up
 n_ages <- length(unique(pred_msm$age))
-n_ages <- length(unique(pred_msm$age_group))
+n_ages <- length(unique(pred_msm$age))
 n_years_msm <- length(unique(pred_msm$year))
 
 n_interactions_year_msm <- n_years_msm * n_ages
@@ -173,11 +187,11 @@ Q2_msm <- kronecker(R_age, R_year_msm)
 msm_formulas_simple <- list(
   mod0 = n ~ 1 + f(id.year, model = "rw2"),
   
-  mod1 = n ~ 1 + f(id.age_group, model = "ar1"),
+  mod1 = n ~ 1 + f(id.age, model = "ar1"),
   
-  mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1"),
+  mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1"),
   
-  mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
     f(id.year.age, model = "generic0",
       Cmatrix = Q2_msm,
       extraconstr = list(A = A_combined2_msm, e = e2_msm),
@@ -186,75 +200,75 @@ msm_formulas_simple <- list(
 
 msm_formulas_countrysurv1 <- list(
   
-  mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+  mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
     f(id.year.age, model = "generic0",
       Cmatrix = Q2_msm,
       extraconstr = list(A = A_combined2_msm, e = e2_msm),
       rankdef = n_years_msm + n_ages - 1L),
   
-  mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(survey_id, model = "iid"),
+  mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(survey_id, model = "iid"),
   
-  mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj())
+  mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj())
 )
 
 # 
 # msm_formulas_countrysurv2 <- list(
 #   
-#   mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+#   mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
 #     f(id.year.age, model = "generic0",
 #       Cmatrix = Q2_msm,
 #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #       rankdef = n_years_msm + n_ages - 1L),
 #   
-#   mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
+#   mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
 #   
-#   mod6 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+#   mod6 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
 #     f(id.year.age, model = "generic0",
 #       Cmatrix = Q2_msm,
 #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #       rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()),
 #   
-#   mod7 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + 
+#   mod7 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + 
 #     f(id.iso3, model = "besag", graph = national_adj()) +
-#     f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())),
+#     f(id.age2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())),
 #   
-#   mod8 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+#   mod8 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
 #     f(id.year.age, model = "generic0",
 #       Cmatrix = Q2_msm,
 #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #       rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj()) +
-#     f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
+#     f(id.age2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
 # )
 
 # msm_formulas <- list(
-#   mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+#   mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
 #     f(id.year.age, model = "generic0",
 #       Cmatrix = Q2_msm,
 #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #       rankdef = n_years_msm + n_ages - 1L),
 # 
-#   # mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
+#   # mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
 #   #   f(id.year.age, model = "generic0",
 #   #     Cmatrix = Q2_msm,
 #   #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #   #     rankdef = n_years_msm + n_ages - 1L),
 #   # 
 #   # 
-#   #   mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid")+
+#   #   mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid")+
 #   #     f(id.year.age, model = "generic0",
 #   #       Cmatrix = Q2_msm,
 #   #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #   #       rankdef = n_years_msm + n_ages - 1L) ,
 #   # 
-#   mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
-#     f(id.age_group2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
+#   mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
+#     f(id.age2, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
 #     f(id.year.age, model = "generic0",
 #       Cmatrix = Q2_msm,
 #       extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #       rankdef = n_years_msm + n_ages - 1L) 
 #   # 
-#   # mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
-#   #   f(id.age_group, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
+#   # mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
+#   #   f(id.age, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
 #   #   f(id.year.age, model = "generic0",
 #   #     Cmatrix = Q2_msm,
 #   #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
@@ -322,10 +336,10 @@ all_samples_msm_simple <- imap_dfr(msm_results_simple_formulas, ~ {
   left_join(formula_labs)
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds) %>%
   left_join(
     all_samples_msm_simple %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              or = exp(log_or),
@@ -334,10 +348,10 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
              prev = plogis(mean)) %>%
       filter(model == "countries")) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = kp_prev)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_point(aes(x = age, y = kp_prev)) +
+  geom_line(aes(x = multi.utils::to_int(age), y = prev, color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
+  geom_line(aes(x = multi.utils::to_int(age), y = tot_prev), color = "black", linetype = "dashed") +
   facet_wrap(~survey_id) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
@@ -346,10 +360,10 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds, or_obs) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds, or_obs) %>%
   left_join(
     all_samples_msm_simple %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              log_loweror = lower - logit_totprev,
@@ -362,9 +376,9 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
              prev = plogis(mean)) %>%
       filter(model == "countries")) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = or_obs)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = or, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = or_lower, ymax = or_upper, fill = formula), alpha = 0.3) +
+  geom_point(aes(x = age, y = or_obs)) +
+  geom_line(aes(x = multi.utils::to_int(age), y = or, color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age), ymin = or_lower, ymax = or_upper, fill = formula), alpha = 0.3) +
   geom_hline(yintercept = 1, color = "darkred", linetype = "dashed") +
   facet_wrap(~survey_id) +
   scale_y_log10() +
@@ -388,10 +402,10 @@ all_samples_msm_countrysurv1 <- imap_dfr(msm_results_countrysurv1_formulas, ~ {
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds) %>%
   left_join(
     all_samples_msm_countrysurv1 %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              or = exp(log_or),
@@ -400,10 +414,10 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
              prev = plogis(mean)) %>%
       filter(model == "countries")) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = kp_prev)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_point(aes(x = age, y = kp_prev)) +
+  geom_line(aes(x = multi.utils::to_int(age), y = prev, color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
+  geom_line(aes(x = multi.utils::to_int(age), y = tot_prev), color = "black", linetype = "dashed") +
   facet_wrap(~survey_id) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
@@ -412,7 +426,7 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
 
 # Regional plot
 all_samples_msm_countrysurv1 %>% 
-      # select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula, region) %>%
+      # select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula, region) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              or = exp(log_or),
@@ -424,10 +438,10 @@ all_samples_msm_countrysurv1 %>%
              region %in% c("ESA", "WCA"),
              year %in%  c(2016,2019,2021)) %>%
   ggplot() +
-  geom_point(data = msm_inla_dat %>% filter(!is.na(survey_id)) , aes(x = age_group, y = kp_prev, color = factor(year))) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color =  factor(year))) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = factor(year)), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev, color = factor(year)), linetype = "dashed") +
+  geom_point(data = msm_inla_dat %>% filter(!is.na(survey_id)) , aes(x = age, y = kp_prev, color = factor(year))) +
+  geom_line(aes(x = multi.utils::to_int(age), y = prev, color =  factor(year))) +
+  geom_ribbon(aes(x = multi.utils::to_int(age), ymin = prev_lower, ymax = prev_upper, fill = factor(year)), alpha = 0.3) +
+  geom_line(aes(x = multi.utils::to_int(age), y = tot_prev, color = factor(year)), linetype = "dashed") +
   facet_wrap(~region) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
@@ -435,10 +449,10 @@ all_samples_msm_countrysurv1 %>%
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds, or_obs) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds, or_obs) %>%
   left_join(
     all_samples_msm_countrysurv1 %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              log_loweror = lower - logit_totprev,
@@ -451,9 +465,9 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
              prev = plogis(mean)) %>%
       filter(model == "countries")) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = or_obs)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = or, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = or_lower, ymax = or_upper, fill = formula), alpha = 0.3) +
+  geom_point(aes(x = age, y = or_obs)) +
+  geom_line(aes(x = multi.utils::to_int(age), y = or, color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age), ymin = or_lower, ymax = or_upper, fill = formula), alpha = 0.3) +
   geom_hline(yintercept = 1, color = "darkred", linetype = "dashed") +
   facet_wrap(~survey_id) +
   scale_y_log10() +
@@ -476,10 +490,10 @@ msm_results_countrysurv2_formulas$mod5$summary
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds) %>%
   left_join(
     all_samples_msm_countrysurv2 %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              or = exp(log_or),
@@ -489,10 +503,10 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
       filter(model == "countries",
              !mod_name %in% c("mod7", "mod8"))) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = kp_prev)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_point(aes(x = age, y = kp_prev)) +
+  geom_line(aes(x = multi.utils::to_int(age), y = prev, color = formula)) +
+  geom_ribbon(aes(x = multi.utils::to_int(age), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
+  geom_line(aes(x = multi.utils::to_int(age), y = tot_prev), color = "black", linetype = "dashed") +
   facet_wrap(~survey_id) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
@@ -501,32 +515,32 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
 
 msm_inla_dat %>%
   filter(!is.na(id.year.age)) %>%
-  distinct(year, age_group, id.year.age) %>%
+  distinct(year, age, id.year.age) %>%
   arrange(id.year.age) %>%
-  left_join(msm_results_countrysurv2_formulas$mod6$model$summary.random$id.year.age %>% select(id.year.age = ID, mean)) %>% ggplot() + geom_point(aes(x = year, y = mean, color = factor(age_group)), size = 3, shape = 20) + theme_minimal()
+  left_join(msm_results_countrysurv2_formulas$mod6$model$summary.random$id.year.age %>% select(id.year.age = ID, mean)) %>% ggplot() + geom_point(aes(x = year, y = mean, color = factor(age)), size = 3, shape = 20) + theme_minimal()
 
 
 msm_inla_dat %>%
-  filter(!is.na(age_group)) %>%
-  distinct(age_group, id.age_group) %>%
-  arrange(id.age_group) %>%
-  left_join(msm_results_countrysurv2_formulas$mod6$model$summary.random$id.age_group %>% select(id.age_group = ID, mean)) %>% ggplot() + geom_point(aes(x = age_group, y = mean), size = 3, shape = 20) + theme_minimal()
+  filter(!is.na(age)) %>%
+  distinct(age, id.age) %>%
+  arrange(id.age) %>%
+  left_join(msm_results_countrysurv2_formulas$mod6$model$summary.random$id.age %>% select(id.age = ID, mean)) %>% ggplot() + geom_point(aes(x = age, y = mean), size = 3, shape = 20) + theme_minimal()
 
 
 msm_inla_dat %>%
-  filter(!is.na(age_group)) %>%
-  distinct(age_group, id.age_group) %>%
-  arrange(id.age_group) %>%
-  left_join(msm_results_countrysurv2_formulas$mod5$model$summary.random$id.age_group %>% select(id.age_group = ID, mean)) %>% ggplot() + geom_point(aes(x = age_group, y = mean), size = 3, shape = 20) + theme_minimal()
+  filter(!is.na(age)) %>%
+  distinct(age, id.age) %>%
+  arrange(id.age) %>%
+  left_join(msm_results_countrysurv2_formulas$mod5$model$summary.random$id.age %>% select(id.age = ID, mean)) %>% ggplot() + geom_point(aes(x = age, y = mean), size = 3, shape = 20) + theme_minimal()
 
 msm_inla_dat %>% filter(!is.na(survey_id)) %>% 
-  group_by(age_group) %>% 
+  group_by(age) %>% 
   summarise(denom = sum(denom),
             n = sum(n)) %>% 
-  ggplot() + geom_point(aes(x = age_group, y = n))
+  ggplot() + geom_point(aes(x = age, y = n))
 
 msm_inla_dat %>% filter(!is.na(survey_id)) %>% 
-  group_by(survey_id, age_group) %>% 
+  group_by(survey_id, age) %>% 
   summarise(denom = sum(denom),
             n = sum(n),
             prev = n/denom) %>% 
@@ -535,33 +549,33 @@ msm_inla_dat %>% filter(!is.na(survey_id)) %>%
   mutate(survey_prev = sum(n)/sum(denom)) %>% 
   ungroup() %>% 
   mutate(ratio = prev/survey_prev) %>% 
-  mutate(id.age_group = multi.utils::to_int(age_group)) %>% 
-  ggplot() + geom_boxplot(aes(x = age_group, y = ratio)) + geom_hline(yintercept = 1, color = "darkred") + theme_minimal()
+  mutate(id.age = multi.utils::to_int(age)) %>% 
+  ggplot() + geom_boxplot(aes(x = age, y = ratio)) + geom_hline(yintercept = 1, color = "darkred") + theme_minimal()
   
 
 msm_inla_dat %>% filter(!is.na(survey_id)) %>% 
-  group_by(survey_id, age_group, tot_prev) %>% 
+  group_by(survey_id, age, tot_prev) %>% 
   summarise(denom = sum(denom),
             n = sum(n),
             prev = n/denom,
             pr = prev/tot_prev) %>% 
   ungroup() %>% 
-  ggplot() + geom_boxplot(aes(x = age_group, y = pr)) + geom_hline(yintercept = 1, color = "darkred") +
+  ggplot() + geom_boxplot(aes(x = age, y = pr)) + geom_hline(yintercept = 1, color = "darkred") +
   scale_y_log10() +
 theme_minimal()
 
 ## trialling the formula
 
 # 
-# mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
+# mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
 #   f(id.year.age, model = "generic0",
 #     Cmatrix = Q2_msm,
 #     extraconstr = list(A = A_combined2_msm, e = e2_msm),
 #     rankdef = n_years_msm + n_ages - 1L)
 # 
-# mod1 <- n ~ 1 + f(id.year, model = "rw2") + f(id.age_group2, model = "ar1") + 
+# mod1 <- n ~ 1 + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + 
 #   f(id.iso3, model = "besag", graph = national_adj()) + 
-#   f(id.age_group, model = "rw2", group = id.iso3, control.group = list(model = "besag",graph = national_adj())) +
+#   f(id.age, model = "rw2", group = id.iso3, control.group = list(model = "besag",graph = national_adj())) +
 #  f(id.year.age, model = "generic0", 
 #                                                                                                                                             Cmatrix = Q2_msm, extraconstr = list(A = A_combined2_msm, 
 #                                                                                                                                                                                  e = e2_msm), rankdef = n_years_msm + n_ages - 1L)
@@ -597,8 +611,8 @@ print(formula)
 # data <- data %>% filter(!model == "regions")
 
 focused_mods <- list(
-  mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
-  mod5a = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "iid")
+  mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
+  mod5a = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "iid")
 )
 
 focused_mods_labs = data.frame(
@@ -619,10 +633,10 @@ msm_results_focused_mods$mod5$summary
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds, denom) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds, denom) %>%
   left_join(
     all_samples_msm_focused_mods%>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              or = exp(log_or),
@@ -632,10 +646,10 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
       filter(model == "countries",
              !mod_name %in% c("mod7", "mod8"))) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = kp_prev, size = denom)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_point(aes(x = age, y = kp_prev, size = denom)) +
+  geom_line(aes(x = age, y = prev, color = formula)) +
+  geom_ribbon(aes(x = age, ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
+  geom_line(aes(x = age, y = tot_prev), color = "black", linetype = "dashed") +
   facet_wrap(~survey_id) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
@@ -659,14 +673,14 @@ msm_results_focused_mods2$mod5$summary
 
 
 time_interaction_mods <- list(
-  mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
-  mod50 = n ~ 1 + year*age_group + f(id.iso3, model = "iid"),
-  mod500 =  n ~ 1 + f(id.year, model = "rw2") + year*age_group + f(id.age_group, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
-  mod5000 = n ~ 1 + f(id.year, model = "rw2") + f(id.age_group, model = "ar1") +
-        f(id.year.age, model = "generic0",
-          Cmatrix = Q2_msm,
-          extraconstr = list(A = A_combined2_msm, e = e2_msm),
-          rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj())
+  # mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
+  mod50 = n ~ 1 + year*age + f(id.iso3, model = "iid")
+  # mod500 =  n ~ 1 + f(id.year, model = "rw2") + year*age + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
+  # mod5000 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
+  #       f(id.year.age, model = "generic0",
+  #         Cmatrix = Q2_msm,
+  #         extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #         rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj())
 )
 
 time_interaction_mods_labs = data.frame(
@@ -687,10 +701,10 @@ msm_results_focused_mods$mod5$summary
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds, denom) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds, denom) %>%
   left_join(
     all_samples_msm_time_interaction_mods %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              or = exp(log_or),
@@ -700,10 +714,10 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
       filter(model == "countries",
              !mod_name %in% c("mod500"))) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = kp_prev, size = denom)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = prev, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = tot_prev), color = "black", linetype = "dashed") +
+  geom_point(aes(x = age, y = kp_prev, size = denom)) +
+  geom_line(aes(x = age, y = prev, color = formula)) +
+  geom_ribbon(aes(x = age, ymin = prev_lower, ymax = prev_upper, fill = formula), alpha = 0.3) +
+  geom_line(aes(x = age, y = tot_prev), color = "black", linetype = "dashed") +
   facet_wrap(~survey_id) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
@@ -711,10 +725,10 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
-  select(survey_id, iso3, year, kp_prev, age_group, kp_odds, or_obs) %>%
+  select(survey_id, iso3, year, kp_prev, age, kp_odds, or_obs) %>%
   left_join(
     all_samples_msm_time_interaction_mods %>% 
-      select(iso3, year, age_group, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+      select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
              log_loweror = lower - logit_totprev,
@@ -727,9 +741,9 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
              prev = plogis(mean)) %>%
       filter(model == "countries", !mod_name == "mod500")) %>%
   ggplot() +
-  geom_point(aes(x = age_group, y = or_obs)) +
-  geom_line(aes(x = multi.utils::to_int(age_group), y = or, color = formula)) +
-  geom_ribbon(aes(x = multi.utils::to_int(age_group), ymin = or_lower, ymax = or_upper, fill = formula), alpha = 0.3) +
+  geom_point(aes(x = age, y = or_obs)) +
+  geom_line(aes(x = age, y = or, color = formula)) +
+  geom_ribbon(aes(x = age, ymin = or_lower, ymax = or_upper, fill = formula), alpha = 0.3) +
   geom_hline(yintercept = 1, color = "darkred", linetype = "dashed") +
   facet_wrap(~survey_id) +
   scale_y_log10() +
