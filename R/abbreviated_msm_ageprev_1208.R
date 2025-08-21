@@ -148,7 +148,7 @@ msm_inla_dat <- pred_msm %>%
     id.iso3.year = ifelse(is.na(iso3), NA_integer_, id.iso3.year)) %>% 
   #id.age2 = ifelse(is.na(survey_id), NA_integer_, id.age2)) %>% 
   # kitchen.sink::single_year_to_five_year(age) %>% 
-  mutate(id.age = factor(multi.utils::to_int(age)),
+  mutate(id.age = (multi.utils::to_int(age)),
          id.year.age = group_indices(., age, year),
          id.age2 =  ifelse(model == "regions", NA_integer_, id.age)) %>% 
   filter(!is.na(age)) 
@@ -195,12 +195,12 @@ run_inla_model_msm <- function(formula, data, denom, tot_prev) {
   mod <- inla(
     formula = formula,
     Ntrials = denom,
-    offset = qlogis(tot_prev),
+    # offset = qlogis(tot_prev),
     data = data,
     family = "binomial",
     # control.inla = list(int.strategy = "eb"),
     control.family = list(link = "logit"),
-    control.compute=list(config = TRUE, dic = TRUE),
+    control.compute=list(config = TRUE, dic = TRUE, waic = T),
     verbose = F,
     keep = F
   )
@@ -272,38 +272,44 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
 ##### Time interaction mods ######
 
 
-time_interaction_mods <- list(
-  mod5 = n ~ 1 + f(id.year, model = "rw2")  + bs(age, df = 5) + f(id.iso3, model = "besag", graph = national_adj()), #+ f(id.age, model = "ar1")
-  # mod50 = n ~ 1 + id.year*id.age + f(id.iso3, model = "besag", graph = national_adj()),
-  # mod500 =  n ~ 1 + f(id.year, model = "rw2") + year*age + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()),
-  mod5000 = n ~ 1 + f(id.year, model = "rw2") + bs(age, df = 5)  +
-        f(id.year.age, model = "generic0",
-          Cmatrix = Q2_msm,
-          extraconstr = list(A = A_combined2_msm, e = e2_msm),
-          rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj())
+msm_mods <- list(
+  # mod0 = n ~ 1 + id.year * id.age ,
+  # mod1 = n ~ 1 + id.year * id.age + f(id.iso3, model = "iid"),
+  mod5 = n ~ 1 + id.year * id.age + f(id.iso3, model = "besag", graph = national_adj()),
+  mod50 = n ~ 1 + id.year + f(id.age, model = "ar1") + id.year:id.age + f(id.iso3, model = "besag", graph = national_adj()),
+  mod500 = n ~ 1 + id.year + f(id.age, model = "ar1") + id.year:id.age + f(id.iso3, model = "iid"))
+  # mod500 = n ~ 1 + 
+  # mod5000 = n ~ 1 + f(id.year, model = "rw2") + bs(age, df = 5)  +
+  #       f(id.year.age, model = "generic0",
+  #         Cmatrix = Q2_msm,
+  #         extraconstr = list(A = A_combined2_msm, e = e2_msm),
+  #         rankdef = n_years_msm + n_ages - 1L) + f(id.iso3, model = "besag", graph = national_adj())
+
+
+msm_mods_labs = data.frame(
+  mod_name = c("mod0", "mod1","mod5", "mod50", "mod500"),
+  formula = c("Year X Age", "Year X Age + Country IID", "Year X Age + Country ICAR", "Year + Age AR1 + Year:Age + Country ICAR", "Year + Age AR1 + Year:Age + Country IID") 
 )
 
-time_interaction_mods_labs = data.frame(
-  mod_name = c("mod5", "mod50", "mod500", "mod5000"),
-  formula = c("Year RW2 + Age B-splines + Country ICAR", "Linear Age X Linear Time + Country ICAR", "Year RW2 + Age AR1 + Linear Age X Linear Time + Country ICAR", "Year RW2 + Age B-splines + Age RW2 X Year RW2 + Country ICAR") 
-)
+msm_results__mods <- lapply(msm_mods, run_inla_model_msm, data = msm_inla_dat)
 
-msm_results_time_interaction_mods <- lapply(time_interaction_mods, run_inla_model_msm, data = msm_inla_dat)
-
-all_samples_msm_time_interaction_mods <- imap_dfr(msm_results_time_interaction_mods, ~ {
+all_samples_msm_mods <- imap_dfr(msm_results__mods, ~ {
   .x$samples %>%
     mutate(mod_name = .y)
 }) %>% 
-  left_join(time_interaction_mods_labs)
+  left_join(msm_mods_labs)
 
-msm_results_time_interaction_mods$mod5000$summary
-msm_results_focused_mods$mod5$summary
+msm_results__mods$mod0$summary
+msm_results__mods$mod1$summary
+msm_results__mods$mod5$summary
+msm_results__mods$mod50$summary
+msm_results__mods$mod500$summary
 
 
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
   select(survey_id, iso3, year, kp_prev, age, kp_odds, denom) %>%
   left_join(
-    all_samples_msm_time_interaction_mods %>% 
+    all_samples_msm_mods %>% 
       select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
@@ -311,8 +317,7 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
              prev_lower = plogis(lower),
              prev_upper = plogis(upper),
              prev = plogis(mean)) %>%
-      filter(model == "countries",
-             !mod_name %in% c("mod500"))) %>%
+      filter(model == "countries")) %>%
   ggplot() +
   geom_point(aes(x = age, y = kp_prev, size = denom)) +
   geom_line(aes(x = age, y = prev, color = formula)) +
@@ -329,7 +334,7 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
 msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
   select(survey_id, iso3, year, kp_prev, age, kp_odds, or_obs) %>%
   left_join(
-    all_samples_msm_time_interaction_mods %>% 
+    all_samples_msm_mods %>% 
       select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
       mutate(logit_totprev = qlogis(tot_prev),
              log_or = mean - logit_totprev,
@@ -341,7 +346,7 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
              prev_lower = plogis(lower),
              prev_upper = plogis(upper),
              prev = plogis(mean)) %>%
-      filter(model == "countries", !mod_name == "mod500")) %>%
+      filter(model == "countries")) %>%
   ggplot() +
   geom_point(aes(x = age, y = or_obs)) +
   geom_line(aes(x = age, y = or, color = formula)) +
@@ -358,6 +363,22 @@ msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
 
 
 ##
+saveRDS(msm_inla_dat, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/msm_inla_dat_aug25.rds")
+
+formula <- n ~ 1 + id.age * id.year + f(id.iso3, model = "besag", graph = national_adj())
+
+inla_mod <- inla(
+  formula = formula,
+  Ntrials = denom,
+  offset = qlogis(tot_prev),
+  data = msm_inla_dat,
+  family = "binomial",
+  # control.inla = list(int.strategy = "eb"),
+  control.family = list(link = "logit"),
+  control.compute=list(config = TRUE, dic = TRUE),
+  verbose = F,
+  keep = F
+)
 
 
 df_test <- msm_inla_dat %>% filter(!is.na(survey_id))
@@ -369,12 +390,76 @@ ind.effect = contents$start[id.effect] - 1 + (1:contents$length[id.effect])
 ind.effect <- 1:(nrow(msm_inla_dat) - nrow(df_test))
 samples.effect = lapply(samples, function(x) x$latent[ind.effect])
 samples <- matrix(sapply(samples.effect, cbind), ncol = 1000)
-mean <- rowMeans(samples)
-qtls <- apply(samples, 1, quantile, c(0.025, 0.5, 0.975))
-ident <- msm_inla_dat[ind.effect, ]
-samples <- ident %>% cbind(samples)
+
+samples <- samples %>% data.frame() %>% rowid_to_column() %>% 
+  left_join(msm_inla_dat %>% rowid_to_column()) %>% 
+  filter(model == "countries") %>% 
+  select(rowid:X1000, year, age, iso3) %>% 
+  left_join(msm_inla_dat %>% filter(!is.na(survey_id))) %>% 
+  filter(!is.na(survey_id)) 
+
+samples2 <- samples %>%
+  group_by(age) %>%
+  summarise(
+    across(starts_with("X"), ~ weighted.mean(.x, w = denom, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>% select(-age)
+
+mean <- rowMeans(samples2)
+qtls <- apply(samples2, 1, quantile, c(0.025, 0.5, 0.975))
+ident <- data.frame(age = 15:49)
+samples <- ident %>% cbind(samples2)
 art <- ident %>% mutate(mean = mean, lower = qtls[1, ], upper = qtls[3, 
 ])
+
+# msm_inla_dat %>% filter(!(is.na(survey_id))) %>%
+#   select(survey_id, iso3, year, kp_prev, age, kp_odds, denom) %>%
+#   left_join(
+#     all_samples_msm_time_interaction_mods %>% 
+#       select(iso3, year, age, mean, lower, upper, tot_prev, mod_name, model, formula) %>%
+
+msm_inla_dat %>% filter(!is.na(survey_id)) %>% 
+  group_by(age) %>% 
+  summarise(tot_prev = weighted.mean(tot_prev, w = denom)) %>% 
+  ungroup() %>% 
+  left_join(art) %>% 
+      mutate(logit_totprev = qlogis(tot_prev),
+             log_or = mean - logit_totprev,
+             or = exp(log_or),
+             prev_lower = plogis(lower),
+             prev_upper = plogis(upper),
+             prev = plogis(mean)) %>% 
+  ggplot() +
+  geom_point(data = msm_inla_dat, aes(x = age, y = kp_prev, size = denom)) +
+  geom_line(aes(x = age, y = prev), color = "red3") + 
+  geom_ribbon(aes(x = age, ymin = prev_lower, ymax = prev_upper), fill = "red3", alpha = 0.3) +
+  geom_line(aes(x = age, y = tot_prev), color = "black", linetype = "dashed") +
+  # facet_wrap(~survey_id) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45)) + 
+  labs(y = "MSM HIV Prevalence", x = "Age Group")
+
+
+### Not post-stratified
+
+model_samples <- moz.utils::sample_model(inla_mod, msm_inla_dat, col = "survey_id")
+
+model_samples %>% 
+  filter(model == "regions", year == 2019) %>% 
+  mutate(prev = plogis(mean),
+         prev_lower = plogis(lower),
+         prev_upper = plogis(upper)) %>% 
+  ggplot() + 
+  geom_point(data = msm_inla_dat, aes(x = age, y = kp_prev, size = denom, color = region)) +
+  geom_line(aes(x = age, y = prev, color = region)) + 
+  geom_ribbon(aes(x = age, ymin = prev_lower, ymax = prev_upper, fill = region), alpha = 0.3) +
+  geom_line(aes(x = age, y = tot_prev, color = region), linetype = "dashed") +
+  # facet_wrap(~survey_id) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45)) + 
+  labs(y = "MSM HIV Prevalence", x = "Age Group")
+
+
 
 function (inla_mod, inla_df, col) 
 {
