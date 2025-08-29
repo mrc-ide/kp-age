@@ -397,13 +397,13 @@ duration_formula <- duration_estimate ~ 1 + id.year + f(survey_id, model = "iid"
 
 duration_mod <- INLA::inla(formula = duration_formula,
                            # E = denom,
-                           family = "Xpoisson",
+                           family = "exponential",
                            # weights = denom,
                            # control.family = list(weights = denom),
                            data = df,
-                           control.compute=list(config = TRUE))      
+                           control.compute=list(config = TRUE, waic = T))      
 
-dur_model_summaries[[3]] <- summary(duration_mod)
+dur_model_summaries[[i]] <- summary(duration_mod)
 
 
 filt_df <- df %>%
@@ -442,14 +442,42 @@ predicted_dat <- ident %>%
          exp_upper = exp(upper),
          kp = kp)
 
+incidence_samples <- data.frame(incidence_samples) %>% rowid_to_column() #remove when reverting
+
+means <- rowMeans(incidence_samples)
+test <- data.frame(year = 1993:2023) %>%
+  mutate(mean = exp(means)) %>%
+  rowwise() %>%
+  mutate(distn = list(diff(pexp(0:20, mean)))) %>%
+                        unnest(distn)
+                      
+ident <- ident %>% rowid_to_column()  #remove when reverting
+ident <- ident %>% left_join(incidence_samples)
+
+
 predictions[[i]] <- predicted_dat
+
+
+
+
 }
+
+
+test %>% filter(year %in% c(2002, 2015, 2017)) %>% 
+  rowid_to_column() %>%  
+  mutate(rowid = ifelse(year == 2015, rowid - 20, rowid),
+         rowid = ifelse(year == 2017, rowid - 40, rowid)) %>% 
+  ggplot() +
+  geom_density(data = (fswdur_dat %>% filter(year %in% c(2002, 2015, 2017))), aes(x = duration_estimate, color = survey_id)) +
+  geom_line(aes(x = rowid, y = distn)) + 
+  facet_wrap(~year) + 
+  theme_minimal()
 
 predictions %>% bind_rows() %>% dplyr::select(year, median, mean, lower, upper, exp_median, exp_mean, exp_lower, exp_upper, kp) %>% moz.utils::name_kp() %>% 
   ggplot() +
-  geom_ribbon(aes(x = year, ymin = exp_lower, ymax = exp_upper), alpha = 0.3) +
-  geom_line(aes(x = year, y = exp_median)) +
-  geom_line(aes(x = year, y = exp_mean), color = "darkred") +
+  geom_ribbon(aes(x = year, ymin = 1/exp_lower, ymax = 1/exp_upper), alpha = 0.3) +
+  geom_line(aes(x = year, y = 1/exp_median)) +
+  geom_line(aes(x = year, y = 1/exp_mean), color = "darkred") +
   # geom_pointrange(data = duration_model  %>% select(survey_id, iso3, kp = kp2, year, median_duration, lower_duration, upper_duration, denom) %>% distinct() %>% moz.utils::name_kp(), aes(y = median_duration, ymin = lower_duration, ymax = upper_duration , x = year, size = denom, color = iso3)) +
   geom_point(data = duration_model  %>% dplyr::select(survey_id, iso3, kp = kp2, year, mean_duration, median_log_duration, median_duration, lower_duration, upper_duration, denom) %>% distinct() %>% moz.utils::name_kp(), aes(y = mean_duration, x = year, size = denom, color = iso3)) +
   moz.utils::standard_theme() +
