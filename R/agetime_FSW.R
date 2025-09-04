@@ -1,3 +1,32 @@
+library(tidyverse)
+library(INLA)
+
+
+fsw_age_dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/fsw_age_dat2105.rds")
+
+spectrum_dat <- readRDS("~/Downloads/2024_spectrum_data.rds") %>%
+  bind_rows() %>%
+  filter(age > 14,
+         iso3 %in% moz.utils::ssa_iso3()) %>%
+  group_by(iso3, year, age, sex) %>%
+  summarise(across(c(totpop:infections), sum)) %>%
+  ungroup() %>%
+  mutate(tot_prev = hivpop/totpop)
+
+
+genpop_median_ages <- spectrum_dat %>%
+  filter(year %in% dat$year,
+         iso3 %in% dat$iso3) %>% 
+  select(iso3, year, age, sex, totpop) %>% 
+  group_by(iso3, year, sex) %>%
+  summarise(median_age = median(rep(age, totpop), na.rm = TRUE)) %>% 
+  ungroup()
+
+genpop_median_ages <- genpop_median_ages %>% 
+  group_by(year, sex) %>% 
+  mutate(megamedian = median(median_age),
+         megamean = mean(mean_age)) %>% 
+  ungroup()
 
 inla_summary <-  function(inlamod_summary, model_description, hyper) {
   df <- data.frame(inlamod_summary$fixed) %>% 
@@ -129,6 +158,7 @@ fsw_agemod_gamma_offset_samples <- moz.utils::sample_model(fsw_agemod_gamma_offs
 
 fsw_gammaoffsetslopes_plots <- ggpubr::ggarrange(fsw_agecount_gamma_offset, fsw_ageratio_gamma_offset, fsw_ageratio_gamma_offset_countries, nrow = 1, common.legend = T, legend = "bottom")
 
+fsw_gammaoffsetslopes_plots 
 
 
 ######## Gamma No Offset

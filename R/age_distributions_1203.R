@@ -1086,7 +1086,8 @@ genpop_median_ages <- spectrum_dat %>%
          iso3 %in% dat$iso3) %>% 
   select(iso3, year, age, sex, totpop) %>% 
   group_by(iso3, year, sex) %>%
-  summarise(median_age = median(rep(age, totpop), na.rm = TRUE)) %>% 
+  summarise(median_age = median(rep(age, totpop), na.rm = TRUE),
+            mean_age = mean(rep(age, totpop), na.rm = TRUE)) %>% 
   ungroup()
 
 # age_diff_plot <-  age_dat %>% rename(median_kp_age = median_age) %>% left_join(genpop_median_ages) %>% mutate(age_diff = median_kp_age - median_age) %>% mutate(sex = ifelse(kp == "TGW", "female", sex)) %>% mutate(kp = factor(kp, levels = c("FSW", "MSM", "PWID", "TGW", "CFSW"))) %>% 

@@ -1,3 +1,8 @@
+library(tidyverse)
+library(INLA)
+
+#single_year_ages is made in age_distributions_1203.R
+
 
 inla_summary <-  function(inlamod_summary, model_description, hyper) {
   df <- data.frame(inlamod_summary$fixed) %>% 
@@ -15,6 +20,17 @@ inla_summary <-  function(inlamod_summary, model_description, hyper) {
       rownames_to_column()
   }
 }
+
+msm_age_dat <- single_year_ages %>% 
+  filter(kp == "MSM") %>% 
+  left_join(genpop_median_ages %>% 
+              mutate(sex = ifelse(sex == "male", 0 , 1))) %>% 
+  group_by(survey_id) %>% 
+  mutate(median_kp_age = median(age),
+         mean_kp_age = mean(age)) %>% 
+  mutate(genpop_median = median_age)
+
+# saveRDS(msm_age_dat, "~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/msm_age_dat.rds")
 
 inla_msm_age <- crossing(year = 2010:2023,
                          iso3 = unique(msm_age_dat$iso3),
@@ -72,7 +88,7 @@ msm_agemod_gamma_offset_samples <- moz.utils::sample_model(msm_agemod_gamma_offs
     ggplot() + 
     geom_line(aes(x = year , y = exp(mean)-genpop_median)) +
     geom_ribbon(aes(x = year, ymin = exp(lower)- genpop_median, ymax = exp(upper)-genpop_median), alpha = 0.3) +
-    geom_point(data = msm_age_dat , aes(x = year, y = mean_kp_age-genpop_median, size = denom, color = iso3), show.legend = F) + 
+    geom_point(data = msm_age_dat , aes(x = year, y = mean_kp_age-megamedian, size = denom, color = iso3), show.legend = F) + 
     geom_hline(yintercept = 0 , color = "darkred", linetype = "dotted", linewidth = 0.7) +
     moz.utils::standard_theme() + 
     coord_cartesian(ylim = c(-12, 3)) +
@@ -97,7 +113,7 @@ msm_agemod_gamma_offset_samples <- moz.utils::sample_model(msm_agemod_gamma_offs
     ggplot() + 
     geom_line(aes(x = year , y = exp(mean)-genpop_median, color = iso3)) +
     geom_ribbon(aes(x = year, ymin = exp(lower)-genpop_median, ymax = exp(upper)-genpop_median, fill = iso3), alpha = 0.05) +
-    geom_point(data = msm_age_dat , aes(x = year, y = (mean_kp_age)-genpop_median, size = denom, color = iso3), show.legend = F) + 
+    geom_point(data = msm_age_dat , aes(x = year, y = (mean_kp_age)-median_age, size = denom, color = iso3), show.legend = F) + 
     geom_hline(yintercept = 0 , color = "darkred", linetype = "dotted", linewidth = 0.7) +
     moz.utils::standard_theme() + 
     labs(x = "Year", y = "Number of years older \nthan the total population") +

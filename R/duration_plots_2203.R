@@ -352,14 +352,21 @@ duration_model <- duration_dat_plot %>%
   group_by(survey_id) %>% 
   mutate(dur_prev = n/sum(n)) %>% 
   ungroup() %>% 
-  mutate(i.survey_id = multi.utils::to_int(survey_id))
+  mutate(i.survey_id = multi.utils::to_int(survey_id),
+         duration_estimate = duration_estimate + 0.5,
+         zero_dur = ifelse(duration_estimate < 1, 1, 0),
+         i.zero_dur = zero_dur))
 
 
 fsw_inla_durationdat <- crossing(year = 1993:2023,
          denom = 1) %>% 
   bind_rows(duration_dat_plot %>% filter(kp2 == "FSW") %>% 
               filter(!duration_estimate == 0)) %>% 
-  mutate(id.year = multi.utils::to_int(year)-1) 
+  mutate(id.year = multi.utils::to_int(year)-1, 
+         duration_estimate = duration_estimate + 0.5,
+         zero_dur = ifelse(duration_estimate < 1, 1, 0),
+         i.zero_dur = zero_dur,
+         mean_year = year - 2017)
   # mutate(duration_estimate = ifelse(duration_estimate == 0, 0.001, duration_estimate))
 
 # log_x <- log(fsw_inla_durationdat$duration_estimate)
@@ -384,6 +391,8 @@ pwid_inla_durationdat <- crossing(year = 2005:2023,
 duration_datlist <- list(fsw_inla_durationdat, msm_inla_durationdat,
                          pwid_inla_durationdat)
 
+duration_datlist <- list(fsw_inla_durationdat)
+
 dur_model_summaries <- list()
 predictions <- list()
 
@@ -393,7 +402,7 @@ for(i in seq_along(duration_datlist)){
   
   kp <- df %>% filter(!is.na(kp2)) %>% pull(kp2) %>% unique()
   
-duration_formula <- duration_estimate ~ 1 + id.year + f(survey_id, model = "iid")
+duration_formula <- duration_estimate ~ 1 + id.year + f(survey_id, model = "iid") + zero_dur + f(i.zero_dur, model = "iid")
 
 duration_mod <- INLA::inla(formula = duration_formula,
                            # E = denom,
@@ -463,7 +472,9 @@ predictions[[i]] <- predicted_dat
 }
 
 
-test %>% filter(year %in% c(2002, 2015, 2017)) %>% 
+dur_model_summaries[[1]]
+
+predictions[[1]] %>% filter(year %in% c(2002, 2015, 2017)) %>% 
   rowid_to_column() %>%  
   mutate(rowid = ifelse(year == 2015, rowid - 20, rowid),
          rowid = ifelse(year == 2017, rowid - 40, rowid)) %>% 

@@ -262,4 +262,8 @@ cfsw_inla_dat %>% filter(!(is.na(survey_id))) %>%
   # lims(y = c(0,50)) +
   labs(y = "CFSW/Genpop OR", x = "Age Group")
 
+
+# Fit to all data with just an age effect
+# Plot data to see what looks weird
+# Fit to a selection of the data (1st do one survey).s
                       
