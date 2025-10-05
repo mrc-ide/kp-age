@@ -16,7 +16,7 @@ single_year_to_five_year <- function (df, fifteen_to_49 = TRUE)  {
   }
 }
 
-dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agehiv_data_extract_240925.rds") 
+dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agehiv_data_extract_011025.rds") 
 
 spectrum_dat <- readRDS("~/Downloads/2024_spectrum_data.rds") %>%
   bind_rows() %>%
@@ -397,8 +397,7 @@ dist_medians <- fsw_dat_medians %>% mutate(kp = "FSW") %>%
   mutate(kp = ifelse(kp == "TGM_other", "Transgender \nMen/Other",kp)) %>% 
   mutate(kp = factor(kp, levels = c("Female sex\nworkers", "Men who have\nsex with men", "People who\ninject drugs", "Clients of female\nsex workers", "Transgender\nwomen" , "Transgender \nMen/Other"))) 
 
-install.packages("ggforce")  
-library(ggforce)
+
 (ages <- dist_dat %>% 
   left_join(dist_medians) %>% 
   filter(!Value < 0) %>% 
@@ -408,20 +407,22 @@ library(ggforce)
          iqr_high = ifelse(Distribution == "Age", round(age_iqr_high, 0), round(duration_iqr_high,0)),
          max_dens = ifelse(Distribution == "Age", max_dens_age, max_dens_dur)) %>% 
   select(survey_id, iso3, year, kp, Distribution, Value, mean, median, iqr_low, iqr_high, max_dens) %>% 
-  mutate(label = paste0("Mean:", mean, " Med:", median, "\nIQR:", iqr_low, "-", iqr_high)) %>% 
+  mutate(label = paste0("Med:", median, ", Mean:", mean)) %>% 
   filter(Distribution == "Age") %>% 
   ggplot() + 
   geom_density(aes(x = Value, color = survey_id), show.legend = F) +
   scale_color_grey(start = 0.8, end = 0.2) +
-  scale_y_continuous(labels = scales::percent) +
-  facet_wrap(~kp,  scales = "free_y", ncol = 1, strip.position = "right") +
+  scale_y_continuous(labels = scales::percent, limits = c(0,0.2)) +
+  facet_wrap(~kp, ncol = 1, strip.position = "right") +
   labs(x = "", y = "") +
+    lims(x = c(15,60)) +
   moz.utils::standard_theme() +
   theme(strip.text.y = element_blank()) +
   theme(aspect.ratio = 1) + 
     ggtitle("Age") +
     theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 10)) +
-  geom_text(data = . %>% group_by(kp) %>% slice(1) %>% ungroup(), aes(label = label, x = 44, y = 1.5*max_dens), size = 3.3, color = "darkred", fontface = "bold") +
+    geom_pointrange(data = . %>% group_by(kp) %>% slice(1) %>% ungroup(), aes(x = median, xmin = iqr_low, xmax = iqr_high, y = 0.15), color = "darkred", size = 0.1) +
+  geom_text(data = . %>% group_by(kp) %>% slice(1) %>% ungroup(), aes(label = label, x = 35, y = 0.17), size = 3.3, color = "darkred", fontface = "bold") +
     theme(plot.margin = margin(0.1,0.1,0.1,0.1, "cm"))
   )
 
@@ -439,20 +440,21 @@ library(ggforce)
                                  kp == "People who\ninject drugs" ~ 0.13,
                                  kp == "Clients of female\nsex workers" ~ 0.13)) %>% 
   select(survey_id, iso3, year, kp, Distribution, Value, mean, median, iqr_low, iqr_high, max_dens, custom_dens) %>% 
-  mutate(label = paste0("Mean:", mean, " Med:", median, "\nIQR:", iqr_low, "-", iqr_high),
-         label = ifelse(kp %in% c("Transgender\nwomen", "Transgender \nMen/Other"), "Not applicable", label)) %>% 
+  mutate(label = paste0("Med:", median, ", Mean:", mean),
+         label = ifelse(kp %in% c("Transgender\nwomen", "Transgender \nMen/Other"), "NA", label)) %>% 
   filter(Distribution == "Duration") %>% 
   mutate(Value = ifelse(kp %in% c("Transgender\nwomen", "Transgender \nMen/Other"), NA_integer_, Value)) %>% 
   ggplot() + 
   geom_density(aes(x = Value, color = survey_id), show.legend = F) +
   scale_color_grey(start = 0.8, end = 0.2) +
-  moz.utils::scale_percent() +
-  lims(x = c(0, 30)) +
-  facet_wrap(~kp,  scales = "free_y", ncol = 1, strip.position = "right") +
+    lims(x = c(0, 30)) +
+  moz.utils::scale_percent(limits = c(0,0.2)) +
+  facet_wrap(~kp,   ncol = 1, strip.position = "right") +
   labs(x = "", y = "") +
   moz.utils::standard_theme() +
   theme(aspect.ratio = 1) + 
-  geom_text(data = . %>% group_by(kp) %>% slice(1) %>% ungroup(), aes(label = label, x = 17, y = custom_dens), size = 3.3, color = "darkred", fontface = "bold") +
+    geom_pointrange(data = . %>% group_by(kp) %>% slice(1) %>% ungroup(), aes(x = median, xmin = iqr_low, xmax = iqr_high, y = 0.15), color = "darkred", size = 0.1) +
+  geom_text(data = . %>% group_by(kp) %>% slice(1) %>% ungroup(), aes(label = label, x = 13, y = 0.17), size = 3.3, color = "darkred", fontface = "bold") +
     ggtitle("Duration") +
     theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 10)) +
     theme(plot.margin = margin(0.1,0.1,0.1,0.1, "cm"))
@@ -460,6 +462,15 @@ library(ggforce)
 
 ggpubr::ggarrange(ages, durations) +theme(plot.margin = margin(0.1,0.1,0.1,0.1, "cm"))
 
- and 
+
+
+dist_dat %>% filter(str_detect(survey_id, pattern ="KEN1993")) %>% 
+  ggplot() +
+  geom_density(aes(x = Value, color = factor(year))) +
+  facet_wrap(~Distribution, scales = "free") +
+  moz.utils::scale_percent() +
+  moz.utils::standard_theme() +
+  theme(legend.position = "right") +
+  theme(aspect.ratio = 1)
 
             
