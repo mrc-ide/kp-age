@@ -4,6 +4,9 @@ library(INLA)
 
 dat <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/agehiv_data_extract_240925.rds") 
 
+spec_hiv <- readRDS("~/Imperial College London/HIV Inference Group - WP - Documents/Data/KP/Individual level data/00Admin/Data extracts/spec_hiv.rds")
+
+
 KEN1993 <- dat %>% 
   filter(survey_id == "KEN1993ACA_FSW") %>% 
   filter(visit == 0) %>% 
@@ -33,54 +36,57 @@ fsw_hiv_age_dat <- dat %>%
     values_from = n,
     names_prefix = "hiv_",
     values_fill = 0  # fill missing with 0 if a group is missing hiv==1 or hiv==0
-  ) 
+  ) %>% 
+  rename(n = hiv_1,
+         n_neg = hiv_0) %>% 
+  mutate(denom = n + n_neg) %>% 
+  left_join(sf::read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% sf::st_drop_geometry()) %>%
+  mutate(id.age = factor(multi.utils::to_int(age)))
 
 
 
-pred_cfsw <- spec_hiv %>% 
+pred_fsw <- spec_hiv %>% 
   # kitchen.sink::single_year_to_five_year() %>% 
   group_by(iso3, year, sex, age) %>% 
   summarise(hivpop = sum(hivpop),
             totpop = sum(totpop),
             tot_prev = hivpop/totpop) %>% 
   ungroup() %>% 
-  filter( iso3 %in% cfsw_dat_iso3,
-          sex == "male",
+  filter(iso3 %in% fsw_hiv_age_dat$iso3,
+          sex == "female",
           # age %in% 15:49,
-          year %in% 2002:2025) %>%
+          year %in% 1993:2023) %>%
   mutate(model = "countries") %>%
-  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>% 
+  left_join(sf::read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% sf::st_drop_geometry()) %>% 
   mutate(id.iso3.age = group_indices(., age, id.iso3)) %>% 
   mutate(denom = 1) %>% 
   mutate(id.age = factor(multi.utils::to_int(age)))
 
 
+# data_prep_cfsw <- cfsw_dat %>%
+#   left_join(moz.utils::region()) %>%
+#   pivot_wider(
+#     names_from = hiv,
+#     values_from = n,
+#     names_prefix = "hiv_",
+#     values_fill = 0  # fill missing with 0 if a group is missing hiv==1 or hiv==0
+#   ) %>% 
+#   rename(n = hiv_1,
+#          n_neg = hiv_0) %>% 
+#   mutate(denom = n + n_neg) %>% 
+#   # kitchen.sink::single_year_to_five_year(age) %>% 
+#   # age %in% 15:49) %>%
+#   left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>%
+#   left_join(pred_cfsw %>% filter(!is.na(id.iso3.age)) %>% distinct(iso3, age, id.iso3.age)) %>% 
+#   mutate(id.age = factor(multi.utils::to_int(age)))
 
 
-
-data_prep_cfsw <- cfsw_dat %>%
-  left_join(moz.utils::region()) %>%
-  pivot_wider(
-    names_from = hiv,
-    values_from = n,
-    names_prefix = "hiv_",
-    values_fill = 0  # fill missing with 0 if a group is missing hiv==1 or hiv==0
-  ) %>% 
-  rename(n = hiv_1,
-         n_neg = hiv_0) %>% 
-  mutate(denom = n + n_neg) %>% 
-  # kitchen.sink::single_year_to_five_year(age) %>% 
-  # age %in% 15:49) %>%
-  left_join(read_sf(moz.utils::national_areas()) %>% select(iso3, id.iso3) %>% st_drop_geometry()) %>%
-  left_join(pred_cfsw %>% filter(!is.na(id.iso3.age)) %>% distinct(iso3, age, id.iso3.age)) %>% 
-  mutate(id.age = factor(multi.utils::to_int(age)))
-
-
-cfsw_inla_dat <- pred_cfsw %>%
-  bind_rows(data_prep_cfsw) %>% 
+fsw_agehiv_inla_dat <- pred_fsw %>%
+  bind_rows(fsw_hiv_age_dat %>%
+              left_join(pred_fsw %>% 
+                          filter(!is.na(id.iso3.age)) %>% 
+                          distinct(iso3, age, id.iso3.age))) %>% 
   mutate(id.year = multi.utils::to_int(year),
-         # id.age = multi.utils::to_int(age),
-         # id.year.age = group_indices(., age, year),
          id.year2 = id.year+1) %>% 
   mutate(kp_prev = n/denom,
          kp_odds = kp_prev/(1-kp_prev),
@@ -97,9 +103,10 @@ cfsw_inla_dat <- pred_cfsw %>%
   mutate(id.age = multi.utils::to_int(age),
          id.year.age = group_indices(., age, year),
          id.age2 =  ifelse(model == "regions", NA_integer_, id.age),
-         mean_age = age - 34) %>% 
+         mean_age = age - 28,
+         mean_year = year - 2011) %>% 
   filter(!is.na(age)) %>% 
-  filter(!sex == "female")
+  filter(!sex == "male")
 
 
 
