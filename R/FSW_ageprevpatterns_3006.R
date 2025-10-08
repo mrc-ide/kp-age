@@ -157,7 +157,7 @@ inla_dat <- pred %>%
   mutate(id.year = multi.utils::to_int(year),
          id.age = multi.utils::to_int(age),
          # id.year.age = group_indices(., age, year),
-         id.year2 = id.year+1) %>% 
+         id.year2 = id.year) %>% 
   mutate(kp_prev = n/denom,
          kp_odds = kp_prev/(1-kp_prev),
          genpop_odds = tot_prev/(1-tot_prev),
@@ -166,6 +166,8 @@ inla_dat <- pred %>%
     id.survey_id = multi.utils::to_int(survey_id),
     id.age2 = id.age,
     id.age3 = ifelse(is.na(iso3), NA_integer_, id.age),
+    id.age4 = id.age3,
+    id.age4 = ifelse(is.na(id.year2), NA_integer_, id.age4),
     id.age2 = ifelse(is.na(survey_id), NA_integer_, id.age2),
     id.iso3.year = group_indices(., iso3, year),
     id.iso3.year = ifelse(is.na(iso3), NA_integer_, id.iso3.year)) %>% 
@@ -227,48 +229,51 @@ R_iso3 <- INLA::inla.scale.model(
 ### 
 
 formulas <- list(
-  mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2,
-      extraconstr = list(A = A_combined2, e = e2),
-      rankdef = n_years + n_ages - 1L),
-  #
-  mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2,
-      extraconstr = list(A = A_combined2, e = e2),
-      rankdef = n_years + n_ages - 1L),
-
-
-  mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid")+
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2,
-      extraconstr = list(A = A_combined2, e = e2),
-      rankdef = n_years + n_ages - 1L) ,
-
-  mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
-    f(id.age3, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2,
-      extraconstr = list(A = A_combined2, e = e2),
-      rankdef = n_years + n_ages - 1L),
-
-  mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
-    f(id.age3, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
-    f(id.year.age, model = "generic0",
-      Cmatrix = Q2,
-      extraconstr = list(A = A_combined2, e = e2),
-      rankdef = n_years + n_ages - 1L),
+  # mod1 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2,
+  #     extraconstr = list(A = A_combined2, e = e2),
+  #     rankdef = n_years + n_ages - 1L),
+  # #
+  # mod2 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2,
+  #     extraconstr = list(A = A_combined2, e = e2),
+  #     rankdef = n_years + n_ages - 1L),
+  # 
+  # 
+  # mod3 = n ~ 1 + f(id.year, model = "rw2") + f(id.age, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid")+
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2,
+  #     extraconstr = list(A = A_combined2, e = e2),
+  #     rankdef = n_years + n_ages - 1L) ,
+  # 
+  # mod4 = n ~ 1 + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) +
+  #   f(id.age3, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2,
+  #     extraconstr = list(A = A_combined2, e = e2),
+  #     rankdef = n_years + n_ages - 1L),
+  # 
+  # mod5 = n ~ 1 + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
+  #   f(id.age3, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) +
+  #   f(id.year.age, model = "generic0",
+  #     Cmatrix = Q2,
+  #     extraconstr = list(A = A_combined2, e = e2),
+  #     rankdef = n_years + n_ages - 1L),
   
-  mod6 = n ~ 1 + id.age:year + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
-    f(id.age3, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
+  # mod6 = n ~ 1 + id.age:id.year + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
+  #   f(id.age3, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj()))
+  
+  mod7 = n ~ 1 + f(id.year, model = "rw2") + f(id.age2, model = "ar1") + f(id.iso3, model = "besag", graph = national_adj()) + f(id.survey_id, model = "iid") +
+    f(id.age3, model = "rw2",  group = id.iso3, control.group = list(model = "besag", graph = national_adj())) + f(id.age4, model = "rw2",  group = id.year2, control.group = list(model = "rw2"))
 
   
 )
 
 formula_labs = data.frame(
-  mod_name = c("mod1", "mod2", "mod3", "mod4", "mod5", "mod6"),
-  formula = c("Year RW2 + Age AR1 + Year X Age", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + Survey IID", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age + Survey IID", "Year RW2 + Age AR1 + Linear Year:Linear Age + ISO3 ICAR + ISO3 X Age + Survey IID")
+  mod_name = c("mod1", "mod2", "mod3", "mod4", "mod5", "mod6", "mod7"),
+  formula = c("Year RW2 + Age AR1 + Year X Age", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + Survey IID", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age", "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age + Survey IID", "Year RW2 + Age AR1 + Linear Year:Linear Age + ISO3 ICAR + ISO3 X Age + Survey IID", "Year RW2 + Age AR1 + Basic Year RW2 X Age RW2 + ISO3 ICAR + ISO3 X Age + Survey IID")
 )
 
 formula_lab_list = list(
@@ -277,7 +282,8 @@ formula_lab_list = list(
   mod3_lab = "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + Survey IID",
   mod4_lab = "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age",
   mod5_lab = "Year RW2 + Age AR1 + Year X Age + ISO3 ICAR + ISO3 X Age + Survey IID",
-  mod6_lab = "Year RW2 + Age AR1 + Linear Year:Linear Age + ISO3 ICAR + ISO3 X Age + Survey IID"
+  mod6_lab = "Year RW2 + Age AR1 + Linear Year:Linear Age + ISO3 ICAR + ISO3 X Age + Survey IID",
+  mod7_lab = "Year RW2 + Age AR1 + Basic Year RW2 X Age RW2 + ISO3 ICAR + ISO3 X Age + Survey IID"
 )
 
 results <- lapply(formulas, run_inla_model, data = inla_dat)
@@ -312,7 +318,7 @@ inla_dat %>% filter(!(is.na(survey_id) |survey_id =="NGA2014BBS_FSW")) %>%
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 45)) + 
   labs(y = "FSW HIV Prevalence", x = "Age Group") + 
-  theme(legend.position = "right")
+  theme(legend.position = "bottom")
 
 
 
